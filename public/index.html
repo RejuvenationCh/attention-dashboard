@@ -24,6 +24,7 @@
   </nav>
   <div class="header-right">
     <span>Refreshed <span id="refreshed-at">–</span></span>
+    <button class="header-btn" onclick="openSettings()" title="Settings"><span class="msym">settings</span></button>
     <button class="header-btn reload-btn" onclick="reload()" title="Reload"><span class="msym">refresh</span></button>
   </div>
 </header>
@@ -53,7 +54,7 @@
           </div>
         </div>
       </div>
-      <div class="donut-wrap" title="Day progress, 7 AM to 10 PM">
+      <div class="donut-wrap" id="donut-wrap" title="Day progress, 7 AM to 10 PM">
         <svg viewBox="0 0 100 100">
           <circle class="donut-track" cx="50" cy="50" r="45" fill="transparent" stroke-width="6"/>
           <circle class="donut-fill" id="day-donut" cx="50" cy="50" r="45" fill="transparent" stroke-width="6" stroke-dashoffset="283"/>
@@ -162,7 +163,6 @@
   <nav class="mac-window dock">
     <button title="Back to top" onclick="window.scrollTo({top:0,behavior:'smooth'})"><span class="msym">vertical_align_top</span></button>
     <button title="Month view" onclick="openMonth()"><span class="msym">event_note</span></button>
-    <button title="Find a time with other people" onclick="openAvailability()"><span class="msym">groups</span></button>
     <div class="dock-sep"></div>
     <button class="dock-add" title="Add task" onclick="openTodoModal()"><span class="msym">add</span></button>
     <div class="dock-sep"></div>
@@ -234,39 +234,64 @@
   </div>
 </div>
 
-<!-- Find a time — Google free/busy across other people's calendars -->
-<div class="avail-overlay" id="avail-overlay" onclick="if(event.target===this) closeAvailability()">
-  <div class="avail-modal">
-    <div class="month-modal-head">
-      <span class="month-modal-title">Find a Time</span>
-      <button class="icon-btn" onclick="closeAvailability()"><span class="msym">close</span></button>
+<!-- Settings — every knob the dashboard exposes, applied as you change it -->
+<div class="todo-overlay" id="settings-overlay" onclick="if(event.target===this) closeSettings()">
+  <div class="todo-modal settings-modal">
+    <div class="todo-modal-head">
+      <span class="todo-modal-heading">Settings</span>
+      <button class="icon-btn" onclick="closeSettings()"><span class="msym">close</span></button>
     </div>
-    <!-- Said up front rather than discovered as a bug: free/busy is all Google will give a
-         third party, and it only answers for calendars actually shared with this account. -->
-    <p class="avail-note">
-      Google returns <strong>busy blocks only</strong> — never event titles — and only for calendars
-      shared with you or made public. Anyone who has not shared theirs will look free.
-    </p>
-    <div class="avail-add">
-      <input class="todo-input" id="avail-email" type="email" placeholder="name@example.com"
-             onkeydown="if(event.key==='Enter') addAvailPerson()">
-      <button class="todo-btn todo-btn-primary" onclick="addAvailPerson()">Add</button>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-remind">Remind me
+        <span class="settings-hint">Days before a deadline to be notified. 0 means only once it is due.</span>
+      </label>
+      <input class="todo-input settings-num" id="settings-remind" type="number" min="0" max="30" onchange="settingsChanged()">
     </div>
-    <div class="avail-people" id="avail-people"></div>
-    <div class="avail-controls">
-      <label class="todo-form-label" for="avail-days">Look ahead</label>
-      <select class="task-sort" id="avail-days" onchange="loadAvailability()">
-        <option value="7">7 days</option>
-        <option value="14">14 days</option>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-snooze">Snooze lengths
+        <span class="settings-hint">Days, comma separated. These become the snooze buttons.</span>
+      </label>
+      <input class="todo-input settings-text" id="settings-snooze" type="text" placeholder="1, 3, 7" onchange="settingsChanged()">
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-day-start">Day window
+        <span class="settings-hint">What the progress ring measures, between these hours.</span>
+      </label>
+      <div class="settings-pair">
+        <input class="todo-input settings-num" id="settings-day-start" type="number" min="0" max="23" onchange="settingsChanged()">
+        <span>to</span>
+        <input class="todo-input settings-num" id="settings-day-end" type="number" min="1" max="24" onchange="settingsChanged()">
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-sort">Default task sort
+        <span class="settings-hint">What the list falls back to on a fresh visit.</span>
+      </label>
+      <select class="task-sort" id="settings-sort" onchange="settingsChanged()">
+        <option value="manual">Manual order</option>
+        <option value="deadline">By deadline</option>
+        <option value="priority">By priority</option>
       </select>
-      <label class="todo-form-label" for="avail-mins">for a gap of</label>
-      <select class="task-sort" id="avail-mins" onchange="loadAvailability()">
-        <option value="30">30 min</option>
-        <option value="60" selected>1 hour</option>
-        <option value="120">2 hours</option>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-week">Week starts on
+        <span class="settings-hint">Sets the month grid's columns.</span>
+      </label>
+      <select class="task-sort" id="settings-week" onchange="settingsChanged()">
+        <option value="1">Monday</option>
+        <option value="0">Sunday</option>
       </select>
     </div>
-    <div id="avail-results"><div class="empty">Add someone to compare calendars.</div></div>
+
+    <div class="todo-btn-row">
+      <button class="todo-btn todo-btn-cancel" onclick="resetSettings()">Reset to defaults</button>
+      <button class="todo-btn todo-btn-primary" onclick="closeSettings()">Done</button>
+    </div>
   </div>
 </div>
 

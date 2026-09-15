@@ -381,8 +381,8 @@ function startClock() {
 function updateDayProgress() {
   const now = new Date();
   const ymd = now.toLocaleDateString('en-CA', { timeZone: TZ });
-  const dayStart = new Date(ymd + 'T07:00:00+08:00').getTime();
-  const dayEnd   = new Date(ymd + 'T22:00:00+08:00').getTime();
+  const dayStart = new Date(ymd + `T${String(_settings.dayStart).padStart(2, '0')}:00:00+08:00`).getTime();
+  const dayEnd   = new Date(ymd + `T${String(_settings.dayEnd).padStart(2, '0')}:00:00+08:00`).getTime();
   const pct = Math.min(100, Math.max(0, (now.getTime() - dayStart) / (dayEnd - dayStart) * 100));
   document.getElementById('day-donut').style.strokeDashoffset = (283 * (1 - pct / 100)).toFixed(1);
   document.getElementById('day-pct').textContent = Math.round(pct);
@@ -932,7 +932,8 @@ function shiftMonth(delta) {
   loadMonth();
 }
 function renderMonthDow() {
-  const dows = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const dows = Array.from({ length: 7 }, (_, i) => names[(_settings.weekStartsOn + i) % 7]);
   document.getElementById('month-dow-row').innerHTML =
     dows.map(d => `<div class="month-dow">${d}</div>`).join('');
 }
@@ -965,8 +966,8 @@ async function loadMonth() {
     monthCache = { key: monthKey, byDate };
   }
 
-  // Monday-first offset for first-of-month
-  const firstDow = (new Date(y, m, 1).getDay() + 6) % 7; // 0 = Monday
+  // Offset of the 1st within the week, which depends on which day the week starts.
+  const firstDow = (new Date(y, m, 1).getDay() - _settings.weekStartsOn + 7) % 7;
   const todayYmd = getDateKey(0);
 
   let html = '';
@@ -1121,12 +1122,107 @@ function dueChip(ymd) {
   return `<span class="due-chip ${cls}" title="${hint}"><span class="msym">${icon}</span> ${label}</span>`;
 }
 
+// ─── Settings ─────────────────────────────────────────────────────
+// Every knob in one blob. The defaults are what the dashboard hard-coded before this panel
+// existed, so a browser that has never opened it behaves exactly as it always did.
+const SETTINGS_KEY = 'chris-dashboard-settings-v1';
+const SETTINGS_DEFAULTS = {
+  remindAheadDays: 0,   // 0 = only once the deadline is today; 3 = a nudge three days out
+  snoozeDays: [1, 3, 7],
+  dayStart: 7,          // what the progress ring measures, not the whole 24 hours
+  dayEnd: 22,
+  defaultSort: 'manual',
+  weekStartsOn: 1,      // 0 = Sunday, 1 = Monday
+};
+let _settings = { ...SETTINGS_DEFAULTS };
+try { _settings = { ..._settings, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}) }; } catch {}
+const saveSettings = () => localStorage.setItem(SETTINGS_KEY, JSON.stringify(_settings));
+
+// "Tomorrow" beats "1 day", and 7 is the one everybody means by next week.
+const snoozeLabel = d => d === 1 ? 'Tomorrow' : d === 7 ? 'Next week' : `${d} day${d > 1 ? 's' : ''}`;
+const hourLabel = h => `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`;
+
+function openSettings() {
+  paintSettings();
+  document.getElementById('settings-overlay').classList.add('open');
+}
+const closeSettings = () => document.getElementById('settings-overlay').classList.remove('open');
+
+function paintSettings() {
+  document.getElementById('settings-remind').value = _settings.remindAheadDays;
+  document.getElementById('settings-snooze').value = _settings.snoozeDays.join(', ');
+  document.getElementById('settings-day-start').value = _settings.dayStart;
+  document.getElementById('settings-day-end').value = _settings.dayEnd;
+  document.getElementById('settings-sort').value = _settings.defaultSort;
+  document.getElementById('settings-week').value = String(_settings.weekStartsOn);
+  document.getElementById('donut-wrap').setAttribute('title',
+    `Day progress, ${hourLabel(_settings.dayStart)} to ${hourLabel(_settings.dayEnd)}`);
+}
+
+// Read every control back, validate, persist. A field that will not parse keeps its previous
+// value rather than becoming NaN — a half-typed number should not quietly wreck a setting.
+function settingsChanged() {
+  const num = (id, lo, hi, fallback) => {
+    const v = Math.round(Number(document.getElementById(id).value));
+    return Number.isFinite(v) && v >= lo && v <= hi ? v : fallback;
+  };
+  const dayStart = num('settings-day-start', 0, 23, _settings.dayStart);
+  const dayEnd   = num('settings-day-end', 1, 24, _settings.dayEnd);
+  if (dayEnd <= dayStart) {
+    showToast('The day has to end after it starts', null, 5);
+    paintSettings();
+    return;
+  }
+  const snooze = document.getElementById('settings-snooze').value
+    .split(',').map(s => Math.round(Number(s.trim())))
+    .filter(n => Number.isFinite(n) && n > 0 && n <= 365).slice(0, 4);
+
+  _settings = {
+    remindAheadDays: num('settings-remind', 0, 30, _settings.remindAheadDays),
+    snoozeDays: snooze.length ? snooze : _settings.snoozeDays,
+    dayStart, dayEnd,
+    defaultSort: document.getElementById('settings-sort').value,
+    weekStartsOn: Number(document.getElementById('settings-week').value) === 0 ? 0 : 1,
+  };
+  saveSettings();
+  adoptDefaultSort();
+  applySettings();
+  paintSettings();
+  showToast('Settings saved', null, 3);
+}
+
+function resetSettings() {
+  _settings = { ...SETTINGS_DEFAULTS };
+  saveSettings();
+  adoptDefaultSort();
+  applySettings();
+  paintSettings();
+  showToast('Settings back to defaults', null, 3);
+}
+
+// Choosing a default sort and seeing the list not move reads as the setting having failed to
+// save, so the current view adopts it too rather than waiting for the next visit.
+function adoptDefaultSort() {
+  _taskView.sort = _settings.defaultSort;
+  saveTaskView();
+  document.getElementById('todo-sort').value = _settings.defaultSort;
+}
+
+// Just redo everything a setting feeds — cheap enough that tracking dependencies would cost
+// more than it saves.
+function applySettings() {
+  updateDayProgress();
+  renderTodos();
+  renderMonthDow();
+  if (document.getElementById('month-overlay').classList.contains('open')) loadMonth();
+}
+
 // ─── Task list: search, sort, snooze and completed ────────────────
 // These are view settings — what you are looking at, not what the task is — so they live in
 // localStorage beside the other display preferences. The three fields that do belong to the
 // task itself (doneAt, priority, snoozeUntil) go to SQLite.
 const TASK_VIEW_KEY = 'chris-dashboard-task-view-v1';
-let _taskView = { q: '', sort: 'manual', showDone: false };
+let _taskView = { q: '', sort: _settings.defaultSort, showDone: false };
 try { _taskView = { ..._taskView, ...(JSON.parse(localStorage.getItem(TASK_VIEW_KEY)) || {}) }; } catch {}
 const saveTaskView = () => localStorage.setItem(TASK_VIEW_KEY, JSON.stringify(_taskView));
 
@@ -1268,9 +1364,8 @@ function renderTodos() {
     ${_snoozeMenuFor === t.id ? `
     <div class="snooze-menu">
       <span class="snooze-label">Snooze until</span>
-      <button onclick="snoozeTodo('${t.id}',1)">Tomorrow</button>
-      <button onclick="snoozeTodo('${t.id}',3)">3 days</button>
-      <button onclick="snoozeTodo('${t.id}',7)">Next week</button>
+      ${_settings.snoozeDays.map(d =>
+        `<button onclick="snoozeTodo('${t.id}',${d})">${snoozeLabel(d)}</button>`).join('')}
       <button class="snooze-cancel" onclick="toggleSnoozeMenu('${t.id}')">Cancel</button>
     </div>` : ''}`;
   };
@@ -1725,7 +1820,8 @@ async function toggleReminders() {
 function checkDueReminders() {
   if (!remindersOn()) return;
   const today = getDateKey(0);
-  const due = getTodos().filter(t => !t.doneAt && t.deadline && !isSnoozed(t) && daysUntil(t.deadline) <= 0);
+  const due = getTodos().filter(t => !t.doneAt && t.deadline && !isSnoozed(t)
+    && daysUntil(t.deadline) <= _settings.remindAheadDays);
   const fresh = due.filter(t => _reminded[t.id] !== today);
   if (!fresh.length) return;
 
@@ -1734,171 +1830,15 @@ function checkDueReminders() {
   _reminded = next;                      // rebuilt from today's due list, so it cannot grow forever
   localStorage.setItem(REMINDED_KEY, JSON.stringify(_reminded));
 
-  const lines = fresh.map(t => `${daysUntil(t.deadline) < 0 ? 'Overdue' : 'Due today'}: ${t.title}`);
+  const lines = fresh.map(t => {
+    const d = daysUntil(t.deadline);
+    const when = d < 0 ? 'Overdue' : d === 0 ? 'Due today' : `Due in ${d} day${d > 1 ? 's' : ''}`;
+    return `${when}: ${t.title}`;
+  });
   try {
     new Notification(fresh.length === 1 ? 'A task needs you' : `${fresh.length} tasks need you`,
       { body: lines.slice(0, 5).join('\n'), tag: 'attention-dashboard-' + today });
   } catch { /* some platforms refuse construction outright — the due strip still shows it */ }
-}
-
-// ─── Find a time (Google free/busy) ───────────────────────────────
-// freeBusy is the only way to see anyone else's calendar, and it is narrow by design: busy
-// intervals and nothing else — no titles, no locations — and only for calendars shared with
-// this account or made public. Someone who has shared nothing comes back with an empty busy
-// list, which is indistinguishable from a free day, so the panel says so rather than drawing
-// a confident empty week.
-const AVAIL_KEY = 'chris-dashboard-avail-people-v1';
-let _availPeople = [];
-try { _availPeople = JSON.parse(localStorage.getItem(AVAIL_KEY)) || []; } catch {}
-const saveAvailPeople = () => localStorage.setItem(AVAIL_KEY, JSON.stringify(_availPeople));
-
-const DAY_START = 8, DAY_END = 22;   // the window worth planning in, not the whole 24h
-
-function openAvailability() {
-  document.getElementById('avail-overlay').classList.add('open');
-  renderAvailPeople();
-  if (_availPeople.length) loadAvailability();
-}
-
-function closeAvailability() {
-  document.getElementById('avail-overlay').classList.remove('open');
-}
-
-function addAvailPerson() {
-  const el = document.getElementById('avail-email');
-  const email = el.value.trim();
-  if (!email) return;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showToast('That does not look like an email address', null, 5);
-    return;
-  }
-  if (!_availPeople.includes(email)) { _availPeople.push(email); saveAvailPeople(); }
-  el.value = '';
-  renderAvailPeople();
-  loadAvailability();
-}
-
-// By index, not by address: an address can legally contain a quote, which would break out of
-// the onclick attribute it was being interpolated into.
-function removeAvailPerson(i) {
-  _availPeople.splice(i, 1);
-  saveAvailPeople();
-  renderAvailPeople();
-  if (_availPeople.length) loadAvailability();
-  else setAvailResults('<div class="empty">Add someone to compare calendars.</div>');
-}
-
-function renderAvailPeople() {
-  document.getElementById('avail-people').innerHTML = _availPeople.map((e, i) => `
-    <span class="avail-chip">${escape(e)}
-      <button onclick="removeAvailPerson(${i})" title="Remove"><span class="msym">close</span></button>
-    </span>`).join('');
-}
-
-const setAvailResults = html => { document.getElementById('avail-results').innerHTML = html; };
-
-async function loadAvailability() {
-  if (!_availPeople.length) return;
-  const days = Number(document.getElementById('avail-days').value);
-  const mins = Number(document.getElementById('avail-mins').value);
-  setAvailResults('<div class="loading"><span class="spinner"></span></div>');
-  try {
-    if (!googleAccounts().length) throw new Error('no Google account is connected');
-    const timeMin = new Date(getDateKey(0) + 'T00:00:00+08:00').toISOString();
-    const timeMax = new Date(getDateKey(days) + 'T23:59:59+08:00').toISOString();
-    // 'primary' is this account's own calendar, so the answer accounts for you as well —
-    // otherwise the "free" slots would be free only for everyone else.
-    const items = [{ id: 'primary' }, ..._availPeople.map(id => ({ id }))];
-    const r = await gcal('/freeBusy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timeMin, timeMax, items }),
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    renderAvail(await r.json(), days, mins);
-  } catch (err) {
-    setAvailResults(`<div class="error">Could not check calendars: ${escape(err.message)}</div>`);
-  }
-}
-
-const hm = d => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
-
-function renderAvail(data, days, mins) {
-  const cals = data.calendars || {};
-  // Google reports an unreadable calendar as an error entry rather than an empty day, so a
-  // typo or an unshared calendar can be named instead of silently reading as "free".
-  const failed = Object.entries(cals)
-    .filter(([, c]) => (c.errors || []).length)
-    .map(([id]) => (id === 'primary' ? 'your own calendar' : id));
-
-  const busy = [];
-  for (const c of Object.values(cals)) {
-    for (const b of (c.busy || [])) busy.push([new Date(b.start), new Date(b.end)]);
-  }
-
-  const rows = [];
-  for (let i = 0; i < days; i++) {
-    const ymd = getDateKey(i);
-    const wStart = new Date(ymd + `T${String(DAY_START).padStart(2,'0')}:00:00+08:00`);
-    const wEnd   = new Date(ymd + `T${String(DAY_END).padStart(2,'0')}:00:00+08:00`);
-
-    const blocks = busy
-      .filter(([s, e]) => e > wStart && s < wEnd)
-      .map(([s, e]) => [new Date(Math.max(s, wStart)), new Date(Math.min(e, wEnd))])
-      .sort((a, b) => a[0] - b[0]);
-
-    // Merge overlapping blocks first: two people busy 09:00–10:00 and 09:30–11:00 are busy
-    // 09:00–11:00 between them, and treating those as separate would invent a free gap.
-    const merged = [];
-    for (const b of blocks) {
-      const last = merged[merged.length - 1];
-      if (last && b[0] <= last[1]) last[1] = new Date(Math.max(last[1], b[1]));
-      else merged.push([b[0], b[1]]);
-    }
-
-    const gaps = [];
-    let cursor = wStart;
-    for (const [s, e] of merged) {
-      if (s - cursor >= mins * 60000) gaps.push([cursor, s]);
-      cursor = new Date(Math.max(cursor, e));
-    }
-    if (wEnd - cursor >= mins * 60000) gaps.push([cursor, wEnd]);
-
-    rows.push({ ymd, merged, gaps, wStart, wEnd });
-  }
-
-  const pct = (wStart, wEnd, d) => ((d - wStart) / (wEnd - wStart)) * 100;
-  const dayLabel = ymd => new Date(ymd + 'T12:00:00+08:00')
-    .toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ });
-
-  const html = rows.map(r => {
-    const bars = r.merged.map(([s, e]) =>
-      `<span class="avail-busy" style="left:${pct(r.wStart, r.wEnd, s)}%;width:${pct(r.wStart, r.wEnd, e) - pct(r.wStart, r.wEnd, s)}%"></span>`).join('');
-    const best = r.gaps[0];
-    const bestBar = best
-      ? `<span class="avail-best" style="left:${pct(r.wStart, r.wEnd, best[0])}%;width:${pct(r.wStart, r.wEnd, best[1]) - pct(r.wStart, r.wEnd, best[0])}%"></span>` : '';
-    const slots = r.gaps.length
-      ? r.gaps.slice(0, 3).map(([s, e]) => `<span class="avail-slot">${hm(s)}–${hm(e)}</span>`).join('')
-      : '<span class="avail-none">No gap that long</span>';
-    return `
-      <div class="avail-day">
-        <div class="avail-day-head"><span>${dayLabel(r.ymd)}</span>${r.gaps.length ? `<span class="avail-count">${r.gaps.length} gap${r.gaps.length>1?'s':''}</span>` : ''}</div>
-        <div class="avail-track" title="Busy between ${DAY_START}:00 and ${DAY_END}:00">${bars}${bestBar}</div>
-        <div class="avail-slots">${slots}</div>
-      </div>`;
-  }).join('');
-
-  const legend = `
-    <div class="avail-legend">
-      <span><i class="avail-swatch busy"></i> busy</span>
-      <span><i class="avail-swatch best"></i> best gap</span>
-      <span class="avail-window">${DAY_START}:00–${DAY_END}:00</span>
-    </div>`;
-
-  setAvailResults(
-    (failed.length ? `<div class="avail-warn"><span class="msym">warning</span>
-      Not shared with you, so treated as free: ${failed.map(escape).join(', ')}.</div>` : '')
-    + legend + `<div class="avail-days">${html}</div>`);
 }
 
 // ─── Init ─────────────────────────────────────────────────────────
@@ -1916,5 +1856,6 @@ document.getElementById('todo-search').value = _taskView.q;
 document.getElementById('todo-sort').value = _taskView.sort;
 if (_taskView.q) document.getElementById('todo-search').focus();
 paintReminderBtn();
+paintSettings();          // reflects the stored window onto the donut's tooltip
 checkDueReminders();
 setInterval(checkDueReminders, 5 * 60 * 1000);
