@@ -220,20 +220,10 @@ main {
   .donut-wrap { width: 160px; height: 160px; }
 }
 
-/* ── Day Briefing ── */
+/* ── Mini cards (Course Deadlines) ── */
 .mini-card { padding: 24px; display: flex; flex-direction: column; }
 .mini-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; margin-bottom: 14px; }
 .mini-eyebrow .msym { font-size: 18px; }
-.briefing-card { background: linear-gradient(rgba(59,130,246,0.03), rgba(59,130,246,0.03)), var(--glass); }
-.briefing-card .mini-eyebrow { color: var(--primary); }
-.brief-regen {
-  margin-left: auto; background: none; border: none; cursor: pointer;
-  color: var(--ink-3); width: 26px; height: 26px; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-}
-.brief-regen:hover { background: rgba(0,0,0,0.05); color: var(--primary); }
-.brief-regen .msym { font-size: 17px; }
-.briefing-body { font-size: 15px; line-height: 1.6; color: var(--ink); }
 
 /* ── Section heads / chips ── */
 .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }

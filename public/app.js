@@ -141,7 +141,6 @@ function showDisconnected() {
   document.getElementById('cd-days').textContent = '–';
   document.getElementById('cd-name').textContent = 'Not connected';
   document.getElementById('cd-sub').textContent = '–';
-  document.getElementById('briefing-text').textContent = 'Waiting for calendar connection.';
 }
 
 function renderAccounts() {
@@ -386,59 +385,6 @@ function updateDayProgress() {
   const pct = Math.min(100, Math.max(0, (now.getTime() - dayStart) / (dayEnd - dayStart) * 100));
   document.getElementById('day-donut').style.strokeDashoffset = (283 * (1 - pct / 100)).toFixed(1);
   document.getElementById('day-pct').textContent = Math.round(pct);
-}
-
-// ─── AI Day Briefing (via local /api/briefing proxy) ──────────────
-// Cached per WITA day: Gemini is called once per day, not on every reload.
-const BRIEFING_KEY = 'chris-dashboard-briefing-v1';
-let _briefArgs = [[], []];   // last events passed to loadBriefing, for manual regeneration
-
-function briefingCachedToday() {
-  try { return JSON.parse(localStorage.getItem(BRIEFING_KEY))?.day === getDateKey(0); }
-  catch { return false; }
-}
-
-function regenBriefing() {
-  localStorage.removeItem(BRIEFING_KEY);
-  document.getElementById('briefing-text').innerHTML = '<span class="spinner"></span> Generating briefing…';
-  loadBriefing(..._briefArgs);
-}
-
-async function loadBriefing(todayEvents, tomorrowEvents) {
-  const el = document.getElementById('briefing-text');
-  const today = getDateKey(0);
-  try {
-    const cached = JSON.parse(localStorage.getItem(BRIEFING_KEY));
-    if (cached?.day === today && cached.text) { el.textContent = cached.text; return; }
-  } catch {}
-
-  const fmt = evs => evs.length === 0 ? 'nothing scheduled'
-    : evs.map(e => `${formatTime(e.start?.dateTime)} ${e.summary || '(No title)'}`).join(', ');
-  const todayStr    = fmt(todayEvents);
-  const tomorrowStr = fmt(tomorrowEvents);
-  const prompt = `Write exactly 2 short, friendly sentences briefing Chris on his day. Be warm and specific. Do NOT start with "Good morning", "Here's", or "Based on". Just dive straight in. Mention what stands out today and anything to keep in mind for tomorrow. Today's schedule: ${todayStr}. Tomorrow: ${tomorrowStr}.`;
-  try {
-    const r = await fetch('/api/briefing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
-    });
-    if (!r.ok) throw new Error('proxy error');
-    const { text, stale, at } = await r.json();
-    if (stale) {
-      // The server kept the last good answer while Gemini was busy. Showing it with a stamp
-      // beats an apology — it is still today's schedule it was written about — but it must not
-      // be passed off as fresh, and it must not be cached as if it were.
-      const when = at ? new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
-      el.textContent = `${text} (Written earlier${when ? ' at ' + when : ''} — Gemini is busy right now.)`;
-      return;
-    }
-    el.textContent = text;
-    localStorage.setItem(BRIEFING_KEY, JSON.stringify({ day: today, text }));
-  } catch(err) {
-    // Not cached, so the next reload tries the API again.
-    el.textContent = 'Briefing unavailable. Check the schedule below.';
-  }
 }
 
 // ─── Countdown ────────────────────────────────────────────────────
@@ -858,10 +804,6 @@ async function loadEvents() {
         </div>
       </div>`;
   }).join('')}</div>`;
-
-  // AI briefing (async, non-blocking)
-  _briefArgs = [byDate[getDateKey(0)] || [], byDate[getDateKey(1)] || []];
-  loadBriefing(..._briefArgs);
 }
 
 // ─── Month view ───────────────────────────────────────────────────
@@ -1736,11 +1678,6 @@ function setLoading() {
   document.getElementById('cd-days').innerHTML='<span class="spinner"></span>';
   document.getElementById('cd-name').textContent='–';
   document.getElementById('cd-sub').textContent='–';
-  // Only show the spinner when a briefing will actually be generated; a cached
-  // one for today stays on screen untouched.
-  if (!briefingCachedToday()) {
-    document.getElementById('briefing-text').innerHTML='<span class="spinner"></span> Generating briefing…';
-  }
   document.querySelectorAll('.reload-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
 }
 

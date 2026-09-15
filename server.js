@@ -1,4 +1,4 @@
-// Static file server + Google OAuth (refresh-token) + Gemini briefing proxy
+// Static file server + Google OAuth (refresh-token)
 // + the Moodle (eLearn UC) calendar feed.
 // Zero dependencies (Node >= 20.12).
 const http = require('http');
@@ -224,49 +224,6 @@ async function oauthCallback(res, query) {
   }
 }
 
-// Gemini is the one upstream here that fails often, and it fails in a way that reads as the
-// whole feature being broken: "This model is currently experiencing high demand" is transient,
-// but the card said "Briefing unavailable" every single time, because nothing kept the last
-// good answer. The Moodle feed already copes with its own flaky upstream by holding on to the
-// last good copy and serving that; this is the same trick. Keyed on the prompt rather than on
-// time, because the prompt is built from today's and tomorrow's events — so it only changes
-// when the schedule does, and a hit really is the same briefing.
-let briefCache = { prompt: null, text: null, at: 0 };
-
-async function briefing(req, res) {
-  let body = '';
-  for await (const chunk of req) body += chunk;
-  let prompt = null;
-  try {
-    ({ prompt } = JSON.parse(body));
-    if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('bad prompt');
-    const r = await fetch(
-      // gemini-2.0-flash lost its free-tier quota; the -latest alias tracks the current free model
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' +
-        process.env.GEMINI_API_KEY,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt.slice(0, 8000) }] }] }),
-      }
-    );
-    const data = await r.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error(data.error?.message || 'empty response');
-    briefCache = { prompt, text, at: Date.now() };
-    json(res, 200, { text });
-  } catch (err) {
-    console.error('[briefing]', process.env.GEMINI_API_KEY ? err.message : 'GEMINI_API_KEY not set — check .env and restart');
-    // 200 rather than 502 when the answer to this exact prompt is already known. A slightly
-    // old briefing is worth more than an apology in the space where the briefing goes, and
-    // `stale` is what stops the client passing it off as today's.
-    if (prompt && briefCache.prompt === prompt) {
-      return json(res, 200, { text: briefCache.text, stale: true, at: briefCache.at });
-    }
-    json(res, 502, { error: 'briefing failed' });
-  }
-}
-
 // ─── Router ───────────────────────────────────────────────────────
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -274,7 +231,6 @@ http.createServer(async (req, res) => {
 
   if (p === '/oauth/start') return oauthStart(res);
   if (p === '/oauth/callback') return oauthCallback(res, url.searchParams);
-  if (p === '/api/briefing' && req.method === 'POST') return briefing(req, res);
 
   if (p === '/api/accounts' && req.method === 'GET') {
     const list = Object.keys(loadTokens()).map(email => ({ email, source: 'google' }));

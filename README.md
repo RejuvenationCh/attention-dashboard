@@ -31,12 +31,7 @@ Publishing status **Testing** expires refresh tokens after 7 days (you'd re-conn
 weekly). Switching to **In production** keeps them alive indefinitely; the app stays
 unverified, which only means a one-time "Google hasn't verified this app" screen.
 
-### 2. Gemini key
-
-1. Get a key at https://aistudio.google.com/apikey
-2. `cp .env.example .env` and fill in `GEMINI_API_KEY`.
-
-### 3. Moodle (eLearn UC) calendar
+### 2. Moodle (eLearn UC) calendar
 
 In Moodle: **Calendar → Export calendar** → pick the events and time range →
 **Get URL for subscription**. Paste that whole URL into `.env` as
@@ -207,8 +202,8 @@ than it protected against. To put it back, make the F3 branch in `buildFkeyTap()
 The server performs the OAuth code flow and stores one **refresh token** per account
 in `tokens.json` (gitignored, mode 600). The browser never sees a refresh token and
 never prompts for sign-in after the first consent: it asks `GET /api/token?email=…`
-and the server mints a fresh access token as needed. Neither the Gemini key nor the
-OAuth client secret ever reaches the browser.
+and the server mints a fresh access token as needed. The OAuth client secret never
+reaches the browser.
 
 The Moodle feed sits outside this model: it has no OAuth and no token store, just
 the credential embedded in `MOODLE_ICS_URL`, read from `.env` by the server and
