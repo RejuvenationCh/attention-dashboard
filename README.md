@@ -1,0 +1,220 @@
+# Attention Dashboard
+
+Chris's personal calendar/todo dashboard, self-hosted on localhost. Vanilla HTML/CSS/JS,
+zero npm dependencies (Node ≥ 20.12).
+
+## Run
+
+The server auto-starts at login via a LaunchAgent
+(`~/Library/LaunchAgents/com.chris.attention-dashboard.plist`) and restarts if it
+crashes. Just open http://localhost:3000. Logs: `/tmp/attention-dashboard.log`.
+
+```
+launchctl kickstart -k gui/$UID/com.chris.attention-dashboard   # restart (e.g. after editing .env)
+launchctl bootout gui/$UID/com.chris.attention-dashboard        # stop + disable until next login
+npm start                                                        # manual run, if the agent is stopped
+```
+
+## One-time setup
+
+### 1. Google Cloud Console (Calendar)
+
+1. Create/reuse a project at https://console.cloud.google.com
+2. Enable the **Google Calendar API** (APIs & Services → Library).
+3. OAuth consent screen: User type **External**, add each Google account you'll
+   connect as a **Test user**.
+4. Credentials → **OAuth 2.0 Client ID** → type **Web application**:
+   - Authorized redirect URI: `http://localhost:3000/oauth/callback`
+5. Put the Client ID **and Client secret** in `.env`.
+
+Publishing status **Testing** expires refresh tokens after 7 days (you'd re-connect
+weekly). Switching to **In production** keeps them alive indefinitely; the app stays
+unverified, which only means a one-time "Google hasn't verified this app" screen.
+
+### 2. Gemini key
+
+1. Get a key at https://aistudio.google.com/apikey
+2. `cp .env.example .env` and fill in `GEMINI_API_KEY`.
+
+### 3. Moodle (eLearn UC) calendar
+
+In Moodle: **Calendar → Export calendar** → pick the events and time range →
+**Get URL for subscription**. Paste that whole URL into `.env` as
+`MOODLE_ICS_URL=…`. It already carries your `userid` and `authtoken`, so treat it
+as a password: `.env` is gitignored and the server never sends the URL to the
+browser — only the parsed events. Leave it empty to switch the feed off.
+
+**Set the export's time range to a wide custom span, not the default.** Moodle's
+"recent and upcoming" preset covers roughly 60 days either side of today and
+silently drops everything further out — a whole course's worth of deadlines can
+sit past that line and never appear. The URL in `.env` uses
+`preset_time=custom&timefrom=…&timeto=…` (currently 2025-01-01 → 2030-01-01).
+The card filters to the next year on its own, so the export range only has to be
+a superset of it; widening it costs nothing, since Moodle only emits events for
+activities that have a date.
+
+Each course becomes its own toggleable calendar, coloured from a fixed palette and
+named via `courses.json` (below); anything uncategorised lands in an "eLearn UC"
+bucket. It appears as its own account in the Accounts card, with no disconnect
+button (it is configured in `.env`, not by signing in).
+
+**Only courses with at least one dated activity appear.** Moodle creates a calendar
+event for an assignment or quiz only when that activity carries a date, so a course
+whose work is handed in during class — or whose due dates were never set — publishes
+nothing at all and cannot be shown, whatever the export URL says. The exporter's
+`preset_what` makes no difference: `all`, `courses`, and an explicit `courses[]=<id>`
+all return the same events, while `categories` and `groups` return none. If a course
+you expect is missing, check in Moodle that its activities actually have due dates —
+and either way, list it in `courses.json` so it still shows up (below).
+
+### Course names and the course roster
+
+The feed carries only the course **shortname** (`20261_IMT01303305-A`). Moodle's ICS
+has no fullname field, and every page that would show one sits behind the campus
+login, so the readable name cannot be fetched. Put it in **`courses.json`** at the
+project root:
+
+```json
+{ "20261_IMT01303305-A": "Name as it appears in Moodle",
+  "IMT01303306-A":       "…or with the term prefix left off" }
+```
+
+Keys may be the full shortname or the term-stripped code — the `<term>_` prefix
+changes every semester, so the stripped form is the one that lasts. Unmapped courses
+fall back to showing the shortname. The file is re-read on every feed refresh (at most
+every 10 minutes), so editing it needs no restart, unlike `.env`. The shortname stays
+the calendar's internal id either way, so adding a name never disturbs the per-course
+toggles or colours.
+
+The same file doubles as your **course roster**, which is the only way to see a course
+the feed cannot tell you about. Because a course's existence reaches the dashboard
+only through its own events, a course with no dated activity is invisible — so list it
+here with its name as both key and value:
+
+```json
+{ "Statistics A": "Statistics A" }
+```
+
+It then appears as a toggle in the Accounts card with nothing due, ready for the day
+it does publish. Keys beginning with `_` are ignored, so `_readme` is safe. Roster
+courses carry no events, so **Course Deadlines is unaffected** — that card stays
+purely "what's due", and a course shows up there only when it actually has something.
+When a listed course starts publishing, move its name onto the shortname the feed
+reports, or you will see it twice.
+
+Read-only and one-way: nothing is ever written back to campus, and the
+dashboard's RSVP/delete actions never apply to these events.
+
+Coursework also appears in the **Course Deadlines** card in the left column, below
+Tasks: the next year of assignments and exams from the course calendars, soonest
+first, each row tagged with its course and time remaining. It is deliberately
+campus-only — folding every Google calendar in made it a second copy of the
+timetable (418 of 509 rows were recurring class meetings already drawn on the
+schedule and week cards). It honours the same per-course toggles as the Accounts
+card, and shows nothing when no campus feed is configured.
+
+The list scrolls inside the card once the term fills up. Hovering a row reveals two
+actions: **pin** (★) keeps a deadline at the top of the list, and **add to Google
+Calendar** copies it to the first connected account's own calendar as
+`📌 Deadline: <name>`, 9am on the due date with a 24-hour reminder. Pins are a
+display preference and live in `localStorage`
+(`chris-dashboard-pinned-deadlines-v1`), beside the hidden-calendar set.
+
+Adding to the calendar is the only thing this card writes, and it writes to Google,
+never to campus — the toast's Undo deletes the event it just created.
+
+The browser cannot fetch the feed itself — Moodle sends no CORS headers and the
+`authtoken` must stay on this machine — so the server proxies it at
+`GET /api/moodle/events?start=YYYY-MM-DD&end=YYYY-MM-DD` (dates inclusive, local).
+It refetches upstream at most every 10 minutes and serves the last good copy if
+campus is down; a failure returns 502 with the reason and leaves the rest of the
+dashboard working.
+
+**Time zones:** campus runs on `Asia/Jakarta` (UTC+7), while the dashboard
+renders `Asia/Makassar` (WITA, UTC+8). Timestamps that carry a `Z` are converted
+into the dashboard's zone so an event lands on the right day; wall-clock
+timestamps (no `Z`) are taken as already-local and passed through untouched.
+
+## Tasks API
+
+Tasks live in **`tasks.db`** (SQLite, via Node's built-in `node:sqlite` — no
+dependency). The browser reads/writes them over HTTP, so anything else on this Mac
+can add tasks too.
+
+```bash
+# Add one task
+curl -X POST localhost:3000/api/todos -H 'Content-Type: application/json' \
+  -d '{"title":"Edit TE photos","deadline":"2026-08-05","link":"https://drive.google.com/..."}'
+
+# Add several at once
+curl -X POST localhost:3000/api/todos -H 'Content-Type: application/json' \
+  -d '[{"title":"Buy cables"},{"title":"Send recap","deadline":"2026-08-07"}]'
+
+curl localhost:3000/api/todos                     # read all
+curl -X PUT localhost:3000/api/todos -d '[]' -H 'Content-Type: application/json'   # replace all
+```
+
+Fields: `title` (required), `deadline` (`YYYY-MM-DD`), `desc`, `link`. Ids are
+generated server-side. Hit Reload in the dashboard to see externally added tasks.
+
+`link` takes either a URL or a **local path** (`/Users/...` or `~/Movies/...`).
+Paths render as an "Open folder" button that reveals the item in Finder via
+`POST /api/reveal` — browsers block `file://` links from an `http://` page, hence
+the server hop. That endpoint only accepts same-origin JSON requests and paths that
+already exist, and never passes anything through a shell.
+
+The database is also readable directly, which is handy for scripts and agents:
+
+```bash
+sqlite3 tasks.db "select title, deadline from todos order by seq;"
+sqlite3 tasks.db "insert into todos (id, title, deadline) values (hex(randomblob(6)), 'Call the vendor', '2026-08-09');"
+```
+
+Column note: the SQL column is `description` (JSON field `desc`), because `desc` is
+a SQL keyword. Writes through the API are transactional.
+
+### Adding a task from anywhere (F3)
+
+`public/add-task.html` is bound to **F3** in Hammerspoon, and it is the dashboard's own
+**New Task modal** — the same markup and the same `style.css`, served by this server, so
+there is nothing to keep in step with the dashboard: it *is* the dashboard's form. Title,
+description, link or folder (with Browse), deadline, and the Google Calendar reminder all
+behave as they do on the page, and it posts to the same `POST /api/todos`.
+
+It appends where the dashboard's modal replaces: this page `POST`s the one task, the
+dashboard `PUT`s its whole list back. Append cannot drop a task if the server's copy has
+moved on, which is worth the small divergence for a panel whose whole job is capturing a
+thought mid-something-else.
+
+The Hammerspoon window is exactly the modal and nothing else — 520 wide, 491 tall, no
+title bar, sitting flush with the bottom of the screen the pointer is on, as the modal
+does on the dashboard. It is opened over whatever you are doing and is deliberately not
+resizable; re-measure the page and update `openTaskPrompt()` if the form gains a field.
+
+F3 is a toggle: it opens the panel, and pressing it again takes the panel down, as do
+Cancel, the X, Escape, and a click on the dimmed area around the card. There is no
+window close button — a title bar is the one piece of chrome the modal does not have.
+It fires in **both** keyboard modes, which is a deliberate reversal. It used to be bound
+only in media mode, on the reasoning that in function-key mode F3 is a function key and
+has to reach the app — it is the debug key in Minecraft and a find key in plenty of
+editors. But `fnModeActive` is set true at the top of `init.lua`, so every reload quietly
+put F3 back behind a gate that had to be reopened by hand with ⌃⌥Z; the gate cost more
+than it protected against. To put it back, make the F3 branch in `buildFkeyTap()` read
+`keyCode == F3 and not fnModeActive`.
+
+## Auth model
+
+The server performs the OAuth code flow and stores one **refresh token** per account
+in `tokens.json` (gitignored, mode 600). The browser never sees a refresh token and
+never prompts for sign-in after the first consent: it asks `GET /api/token?email=…`
+and the server mints a fresh access token as needed. Neither the Gemini key nor the
+OAuth client secret ever reaches the browser.
+
+The Moodle feed sits outside this model: it has no OAuth and no token store, just
+the credential embedded in `MOODLE_ICS_URL`, read from `.env` by the server and
+never sent to the browser.
+
+When a refresh token stops working, the account stays listed in the Accounts card
+marked **Signed out**, with a Reconnect button, instead of silently disappearing —
+which is what a revoked token used to look like. Reconnecting runs the normal
+consent flow.

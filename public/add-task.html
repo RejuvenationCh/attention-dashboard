@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Task</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<!-- The modal's X and the Browse folder glyph are Material Symbols, so this page needs
+     the same icon stylesheet index.html loads or they render as the literal words
+     "close" and "folder_open". -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,0&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Nothing here but the one state style.css has no reason to carry. The markup below is
+     the dashboard's own New Task modal and the stylesheet loaded above is the dashboard's
+     own stylesheet, so everything else — bottom sheet, glass, labels, buttons — is already
+     the real thing rather than a copy of it that can drift.
+     Only on screen for a moment, but the fields flashing green is the whole confirmation:
+     the window is gone before a toast could be read. */
+  body.done .todo-input { border-color: #15803d; box-shadow: 0 0 0 3px rgba(21,128,61,0.12); }
+</style>
+</head>
+<body>
+  <!-- Same structure as #todo-overlay in index.html, permanently open. -->
+  <div class="todo-overlay open" id="overlay">
+    <div class="todo-modal">
+      <div class="todo-modal-head">
+        <span class="todo-modal-heading">New Task</span>
+        <button class="icon-btn" id="close"><span class="msym">close</span></button>
+      </div>
+
+      <label class="todo-form-label" for="title">Task</label>
+      <input class="todo-input" id="title" type="text" placeholder="What needs to be done?"
+             autocomplete="off" spellcheck="false">
+
+      <label class="todo-form-label" for="desc">Description (optional)</label>
+      <textarea class="todo-input" id="desc" rows="2" placeholder="Any notes or context…"></textarea>
+
+      <label class="todo-form-label" for="link">Link or folder (optional)</label>
+      <div class="input-row">
+        <input class="todo-input" id="link" type="text" placeholder="https://drive.google.com/… or a folder on this Mac">
+        <button type="button" class="browse-btn" id="browse-btn"><span class="msym">folder_open</span> Browse</button>
+      </div>
+
+      <label class="todo-form-label" for="deadline">Deadline (optional)</label>
+      <input class="todo-input" id="deadline" type="date">
+
+      <div class="todo-cal-row">
+        <input type="checkbox" id="cal">
+        <label for="cal">Add deadline reminder to Google Calendar</label>
+      </div>
+
+      <div class="todo-err" id="err"></div>
+      <div class="todo-btn-row">
+        <button class="todo-btn todo-btn-cancel" id="cancel">Cancel</button>
+        <button class="todo-btn todo-btn-primary" id="save">Save Task</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // Served by the dashboard itself, so every call below is a same-origin one to the same
+  // endpoints the dashboard's own modal uses — no CORS, no token handling beyond what the
+  // dashboard already does, and nothing written back to campus.
+  const TZ = 'Asia/Makassar';
+
+  const title    = document.getElementById('title');
+  const desc     = document.getElementById('desc');
+  const link     = document.getElementById('link');
+  const deadline = document.getElementById('deadline');
+  const cal      = document.getElementById('cal');
+  const err      = document.getElementById('err');
+  const save     = document.getElementById('save');
+
+  // A page cannot close a window it did not open, so it asks the Hammerspoon side. If
+  // that ever fails the window simply stays up, which is why Escape and Cancel exist.
+  const closeWindow = () => {
+    try { window.webkit.messageHandlers.taskPrompt.postMessage({ action: 'close' }); } catch (e) {}
+  };
+
+  // Native folder picker, run by the server — the browser cannot expose a real path.
+  // Same endpoint and same button states as pickFolder() in app.js.
+  async function pickFolder() {
+    const btn = document.getElementById('browse-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Choosing…';
+    try {
+      const r = await fetch('api/pick-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'picker failed');
+      if (d.path) { link.value = d.path; err.textContent = ''; }
+    } catch (e) {
+      err.textContent = 'Could not open the folder picker.';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="msym">folder_open</span> Browse';
+    }
+  }
+
+  // Mirrors createDeadlineEvent() in app.js — a second copy, because this page cannot
+  // call into that file. The event's shape (📌 prefix, 09:00 WITA, 24h popup reminder)
+  // has to stay in step with it, so change both together.
+  async function createDeadlineEvent(title, deadline) {
+    const accounts = await (await fetch('api/accounts')).json();
+    const acct = accounts.find(a => a.source !== 'moodle');   // Google only; Moodle is read-only
+    if (!acct) throw new Error('no Google account connected');
+    const cred = await (await fetch('api/token?email=' + encodeURIComponent(acct.email))).json();
+    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=none`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cred.token },
+      body: JSON.stringify({
+        summary: `📌 Deadline: ${title}`,
+        start: { dateTime: deadline + 'T09:00:00+08:00', timeZone: TZ },
+        end:   { dateTime: deadline + 'T09:30:00+08:00', timeZone: TZ },
+        reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 1440 }] },
+      }),
+    });
+    if (!res.ok) throw new Error('create failed');
+    return { id: (await res.json()).id || null, acct: acct.email };
+  }
+
+  async function add() {
+    const t = title.value.trim();
+    if (!t) { err.textContent = 'Please enter a task title.'; title.focus(); return; }
+    const when    = deadline.value || null;
+    const addCal  = cal.checked && !!when;
+    err.textContent = '';
+    save.disabled = true;
+    save.textContent = 'Saving…';
+
+    try {
+      // Calendar first, exactly as the dashboard orders it: if Google fails the task is
+      // still saved, with a note, rather than the deadline reminder silently not existing.
+      let calEventId = null, calAcct = null;
+      if (addCal) {
+        try {
+          const ev = await createDeadlineEvent(t, when);
+          calEventId = ev.id;
+          calAcct = ev.acct;
+        } catch (e) {
+          err.textContent = 'Calendar error — task saved without it.';
+        }
+      }
+
+      // POST appends this one task; the dashboard's modal PUTs its whole list back. Append
+      // cannot drop anything if the server's copy has moved on, which is worth the small
+      // divergence for a panel whose whole job is capturing a thought mid-something-else.
+      const r = await fetch('api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: t,
+          desc: desc.value.trim() || null,
+          link: link.value.trim() || null,
+          deadline: when,
+          calEventId, calAcct,
+        }),
+      });
+      if (!r.ok) throw new Error('the dashboard said ' + r.status);
+
+      // Confirmed, then gone. This is the key you press when you do not want to leave
+      // what you are doing, so it should not also need dismissing.
+      document.body.classList.add('done');
+      save.textContent = 'Saved ✓';
+      setTimeout(closeWindow, 400);
+    } catch (e) {
+      err.textContent = 'Could not add: ' + e.message;
+      save.disabled = false;
+      save.textContent = 'Save Task';
+      title.focus();
+    }
+  }
+
+  save.addEventListener('click', add);
+  document.getElementById('cancel').addEventListener('click', closeWindow);
+  document.getElementById('close').addEventListener('click', closeWindow);
+  document.getElementById('browse-btn').addEventListener('click', pickFolder);
+  document.getElementById('overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeWindow();   // click the sheet's backdrop
+  });
+
+  // On the field itself, not the document: the dashboard's modal saves on Enter in the
+  // title only, and a document-level handler would fire alongside a focused button's click.
+  title.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeWindow(); });
+
+  // WKWebView does not reliably honour autofocus, and being able to type the instant the
+  // window appears is the entire point of the key.
+  title.focus();
+</script>
+</body>
+</html>

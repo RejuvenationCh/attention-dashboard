@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attention Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,0&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Top header (desktop) -->
+<header class="mac-header">
+  <div class="header-left">
+    <img src="logo.svg" alt="" class="app-logo">
+    <span class="app-name">Attention</span>
+  </div>
+  <nav class="header-nav">
+    <button class="active">Today</button>
+    <button onclick="openMonth()">Month</button>
+  </nav>
+  <div class="header-right">
+    <span>Refreshed <span id="refreshed-at">–</span></span>
+    <button class="header-btn reload-btn" onclick="reload()" title="Reload"><span class="msym">refresh</span></button>
+  </div>
+</header>
+
+<main>
+  <!-- ── LEFT COLUMN ── -->
+  <div class="col">
+
+    <!-- Google accounts -->
+    <section class="mac-window accounts-card" id="accounts-card">
+      <div class="section-head" style="margin-bottom:12px">
+        <h2 class="card-h2"><span class="msym">account_circle</span> Accounts</h2>
+        <button class="text-btn" onclick="addAccount()"><span class="msym" style="font-size:18px">add</span> Add account</button>
+      </div>
+      <div id="accounts-list"><div class="loading"><span class="spinner"></span></div></div>
+    </section>
+
+    <!-- Hero -->
+    <section class="mac-window hero">
+      <div class="hero-blur"></div>
+      <div class="hero-main">
+        <p class="hero-eyebrow">Attention Dashboard</p>
+        <h1 id="greet-line">Hello, Chris.</h1>
+        <p class="hero-date" id="date-line">–</p>
+        <div class="hero-tiles">
+          <div class="mac-panel hero-tile">
+            <div class="hero-tile-label">Live Time</div>
+            <div class="hero-tile-value" id="clock-time">–</div>
+            <div class="hero-tile-sub" id="clock-day">–</div>
+          </div>
+          <div class="mac-panel hero-tile">
+            <div class="tile-accent"></div>
+            <div class="hero-tile-label"><span class="pulse-dot"></span> Next Up</div>
+            <div class="hero-tile-value" id="cd-days"><span class="spinner"></span></div>
+            <div class="hero-tile-sub"><span id="cd-name">–</span> · <span id="cd-sub">–</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="donut-wrap" title="Day progress, 7 AM to 10 PM">
+        <svg viewBox="0 0 100 100">
+          <circle class="donut-track" cx="50" cy="50" r="45" fill="transparent" stroke-width="6"/>
+          <circle class="donut-fill" id="day-donut" cx="50" cy="50" r="45" fill="transparent" stroke-width="6" stroke-dashoffset="283"/>
+        </svg>
+        <div class="donut-center">
+          <span class="donut-pct"><span id="day-pct">–</span><small>%</small></span>
+          <span class="donut-cap">of day</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Day Briefing -->
+    <section class="mac-window mini-card briefing-card">
+      <div class="mini-eyebrow">
+        <span class="msym">auto_awesome</span> Day Briefing
+        <button class="brief-regen" onclick="regenBriefing()" title="Regenerate briefing"><span class="msym">refresh</span></button>
+      </div>
+      <p class="briefing-body" id="briefing-text"><span class="spinner"></span> Generating briefing…</p>
+    </section>
+
+    <!-- Tasks -->
+    <section class="mac-window tasks">
+      <div class="section-head">
+        <h2>Tasks <span class="count-chip" id="todo-count">–</span></h2>
+        <button class="text-btn" onclick="openTodoModal()"><span class="msym" style="font-size:18px">add</span> New Task</button>
+      </div>
+      <div id="todo-list"><div class="loading"><span class="spinner"></span></div></div>
+    </section>
+  </div>
+
+  <!-- ── RIGHT COLUMN ── -->
+  <div class="col">
+
+    <!-- RSVP -->
+    <section class="mac-window rsvp" id="rsvp-card" style="display:none">
+      <div class="rsvp-head">
+        <h2><span class="msym">mail</span> Pending Invitations</h2>
+        <span class="rsvp-badge" id="rsvp-count">0</span>
+      </div>
+      <div id="rsvp-list"></div>
+    </section>
+
+    <!-- Schedule -->
+    <section class="mac-window schedule">
+      <div class="schedule-sticky">
+        <h2 class="card-h2">Upcoming Schedule</h2>
+        <span class="count-chip" id="event-count"><span class="spinner"></span></span>
+      </div>
+      <div class="cal-warn" id="cal-warn" style="display:none"></div>
+      <div id="event-list"><div class="loading"><span class="spinner"></span></div></div>
+    </section>
+
+    <!-- Week ahead -->
+    <section class="mac-window week">
+      <div class="section-head" style="margin-bottom:0">
+        <h2 id="week-heading">Week Ahead</h2>
+        <span class="count-chip neutral" id="week-count"><span class="spinner"></span></span>
+      </div>
+      <div id="week-list"><div class="loading"><span class="spinner"></span></div></div>
+    </section>
+  </div>
+</main>
+
+<!-- Dock -->
+<div class="dock-wrap">
+  <nav class="mac-window dock">
+    <button class="active" title="Back to top" onclick="window.scrollTo({top:0,behavior:'smooth'})"><span class="msym">calendar_today</span></button>
+    <button title="Month view" onclick="openMonth()"><span class="msym">event_note</span></button>
+    <div class="dock-sep"></div>
+    <button class="dock-add" title="Add task" onclick="openTodoModal()"><span class="msym">add</span></button>
+    <div class="dock-sep"></div>
+    <button class="reload-btn" title="Reload" onclick="reload()"><span class="msym">refresh</span></button>
+  </nav>
+</div>
+
+<!-- Undo toast -->
+<div class="toast" id="toast">
+  <span id="toast-msg">Task removed</span>
+  <button class="toast-undo" onclick="handleToastUndo()">Undo</button>
+  <div class="toast-bar" id="toast-bar"></div>
+</div>
+
+<!-- Todo Add/Edit Modal -->
+<div class="todo-overlay" id="todo-overlay" onclick="if(event.target===this) closeTodoModal()">
+  <div class="todo-modal">
+    <div class="todo-modal-head">
+      <span class="todo-modal-heading" id="todo-modal-heading">New Task</span>
+      <button class="icon-btn" onclick="closeTodoModal()"><span class="msym">close</span></button>
+    </div>
+    <label class="todo-form-label">Task</label>
+    <input class="todo-input" id="todo-modal-title" type="text" placeholder="What needs to be done?" onkeydown="if(event.key==='Enter') saveTodo()">
+    <label class="todo-form-label">Description (optional)</label>
+    <textarea class="todo-input" id="todo-modal-desc" rows="2" placeholder="Any notes or context…"></textarea>
+    <label class="todo-form-label">Link or folder (optional)</label>
+    <div class="input-row">
+      <input class="todo-input" id="todo-modal-link" type="text" placeholder="https://drive.google.com/… or a folder on this Mac">
+      <button type="button" class="browse-btn" id="browse-btn" onclick="pickFolder()" title="Choose a folder on this Mac"><span class="msym">folder_open</span> Browse</button>
+    </div>
+    <label class="todo-form-label">Deadline (optional)</label>
+    <input class="todo-input" id="todo-modal-deadline" type="date">
+    <div class="todo-cal-row">
+      <input type="checkbox" id="todo-modal-cal">
+      <label for="todo-modal-cal">Add deadline reminder to Google Calendar</label>
+    </div>
+    <div class="todo-err" id="todo-modal-err"></div>
+    <div class="todo-btn-row">
+      <button class="todo-btn todo-btn-cancel" onclick="closeTodoModal()">Cancel</button>
+      <button class="todo-btn todo-btn-primary" id="todo-save-btn" onclick="saveTodo()">Save Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- Month modal -->
+<div class="month-overlay" id="month-overlay" onclick="if(event.target===this) closeMonth()">
+  <div class="month-modal">
+    <div class="month-modal-head">
+      <span class="month-modal-title">Month View</span>
+      <div class="month-head-actions">
+        <div class="seg" id="month-view-toggle">
+          <button data-view="compact" onclick="setMonthView('compact')">Compact</button>
+          <button data-view="expanded" onclick="setMonthView('expanded')">Expanded</button>
+        </div>
+        <button class="icon-btn" onclick="closeMonth()"><span class="msym">close</span></button>
+      </div>
+    </div>
+    <div class="month-nav">
+      <button class="icon-btn" onclick="shiftMonth(-1)"><span class="msym">chevron_left</span></button>
+      <span class="month-nav-label" id="month-nav-label">–</span>
+      <button class="icon-btn" onclick="shiftMonth(1)"><span class="msym">chevron_right</span></button>
+    </div>
+    <div class="month-grid" id="month-dow-row"></div>
+    <div class="month-grid month-grid-body" id="month-grid"><div class="loading month-loading"><span class="spinner"></span></div></div>
+    <div class="month-day-detail" id="month-day-detail" style="display:none">
+      <div class="month-day-detail-title" id="month-day-detail-title">–</div>
+      <div id="month-day-detail-body"></div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "attention-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chris's personal calendar/todo attention dashboard (standalone localhost port)",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}

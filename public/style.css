@@ -1,0 +1,705 @@
+/* ── macOS-glass design system ─────────────────────────────────────
+   Windows 16px · panels/cards 12px · chips 8px · dock buttons 12px.
+   One accent (#3b82f6); amber = next-event/deadline-soon; red = overdue. */
+:root {
+  --primary: #3b82f6;
+  --primary-deep: #2170e4;
+  --ink: #191c1d;
+  --ink-2: #424754;
+  --ink-3: #727785;
+  --line: rgba(0,0,0,0.05);
+  --error: #ba1a1a;
+  --amber-accent: #b75b00;
+  --teal: #0d9488;
+  --glass: rgba(255,255,255,0.7);
+  --glass-border: rgba(255,255,255,0.6);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scrollbar-width: none; }
+::-webkit-scrollbar { display: none; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  background-color: #f0f2f5;
+  background-image: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+  /* No background-attachment: fixed — it forces a full-viewport backing layer. */
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  padding-bottom: 90px;
+  font-size: 14px;
+}
+.msym {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal; font-style: normal; line-height: 1;
+  letter-spacing: normal; text-transform: none; display: inline-block;
+  white-space: nowrap; word-wrap: normal; direction: ltr;
+  font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+button { font: inherit; }
+
+/* ── Glass surfaces ──
+   These sit on a near-flat gradient, so backdrop-filter bought almost nothing
+   visually while forcing WebKit to keep a large compositing buffer per card.
+   Slightly more opaque fills look the same and cost a fraction of the memory.
+   Blur is kept only where content genuinely scrolls underneath: the header,
+   the sticky schedule bar, the dock, the toast and the modals. */
+.mac-window {
+  background: rgba(255,255,255,0.82);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08), inset 0 0 0 1px rgba(255,255,255,0.4);
+  border-radius: 16px;
+}
+.mac-panel {
+  background: rgba(255,255,255,0.66);
+  border: 1px solid rgba(255,255,255,0.5);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+  border-radius: 12px;
+}
+
+/* ── Top header ── */
+.mac-header {
+  /* Above .month-overlay (55) on purpose. The month view is a modal, so the overlay is
+     inset:0 and normally everything behind it is inert — but the header's segmented control
+     is the pair of views itself, and leaving "Today" under the backdrop made the one control
+     that says how to leave the month view the one thing you could not click. The overlay
+     reserves the header's band below, so the modal can never slide underneath it. */
+  position: fixed; top: 0; left: 0; width: 100%; z-index: 56;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 24px;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid var(--line);
+}
+.header-left { display: flex; align-items: center; gap: 10px; }
+.app-logo { width: 22px; height: 22px; border-radius: 6px; }
+.app-name { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+.header-nav { display: flex; gap: 8px; position: absolute; left: 50%; transform: translateX(-50%); }
+.header-nav button {
+  font-weight: 500; border: none; background: none; cursor: pointer;
+  padding: 5px 14px; border-radius: 8px; color: var(--ink-2);
+}
+.header-nav button.active { color: var(--ink); background: rgba(225,227,228,0.5); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.header-right { display: flex; align-items: center; gap: 16px; color: var(--ink-2); font-size: 12px; }
+.header-btn { background: none; border: none; cursor: pointer; color: var(--ink-2); padding: 0; display: flex; }
+.header-btn:hover { color: var(--ink); }
+.header-btn .msym { font-size: 20px; }
+
+/* ── Layout ── */
+main {
+  max-width: 1200px; margin: 0 auto; padding: 84px 20px 0;
+  display: grid; grid-template-columns: 8fr 4fr; gap: 24px; align-items: start;
+}
+.col { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; padding-top: 24px; }
+  .mac-header { display: none; }
+}
+
+/* ── Accounts card ── */
+.accounts-card { padding: 20px 24px; }
+.accounts-card .card-h2 .msym { font-size: 20px; color: var(--primary); }
+.acct-empty { font-size: 13px; color: var(--ink-2); margin-bottom: 14px; }
+.acct-row {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(255,255,255,0.55); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 12px;
+}
+.acct-block + .acct-block { margin-top: 12px; }
+.cal-list {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 2px 10px; padding: 8px 4px 2px 6px;
+}
+.cal-item {
+  display: flex; align-items: center; gap: 7px; min-width: 0;
+  font-size: 12px; color: var(--ink-2); cursor: pointer;
+  padding: 3px 4px; border-radius: 6px;
+}
+.cal-item:hover { background: rgba(255,255,255,0.6); color: var(--ink); }
+.cal-item input { width: 14px; height: 14px; accent-color: var(--primary); flex-shrink: 0; margin: 0; cursor: pointer; }
+.cal-item input:not(:checked) ~ .cal-name { opacity: 0.5; }
+.cal-item input:not(:checked) ~ .cal-swatch { opacity: 0.35; }
+.cal-swatch { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.cal-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acct-dot { width: 8px; height: 8px; border-radius: 50%; background: #27c93f; flex-shrink: 0; }
+.acct-body { flex: 1; min-width: 0; }
+.acct-email { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acct-meta { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+/* Moodle's orange, so the campus feed reads as a different source to Google. */
+.acct-dot.moodle { background: #f98012; }
+.acct-add { margin-top: 12px; }
+
+/* A stored token that no longer works: still listed, flagged, one click to fix. */
+.acct-dot.off { background: var(--amber-accent); }
+.acct-failed { background: rgba(183,91,0,0.06); border-radius: 12px; padding: 10px 12px; }
+.acct-reconnect {
+  font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  color: var(--amber-accent); background: rgba(183,91,0,0.1);
+  border: none; border-radius: 8px; padding: 5px 11px; white-space: nowrap;
+}
+.acct-reconnect:hover { background: rgba(183,91,0,0.18); }
+
+/* Deadline rows reuse the task row; .task-meta is a plain block, so the colour
+   swatch needs a flex line box of its own. */
+.course-meta { display: flex; align-items: center; gap: 6px; }
+
+/* Campus deadlines. Deliberately a different card shape from Tasks above it:
+   the first pass reused .tasks and read as a second todo list somebody had
+   swapped in for the real one. Amber keys it to the eLearn UC account dot. */
+.courses-card { background: linear-gradient(rgba(183,91,0,0.035), rgba(183,91,0,0.035)), var(--glass); }
+.courses-card .mini-eyebrow { color: var(--amber-accent); }
+.courses-card .count-chip { margin-left: auto; }
+/* Scrolls once the term fills up; scrollbar-gutter keeps the rows from shifting
+   sideways the moment it appears. */
+#deadline-list { max-height: 400px; overflow-y: auto; scrollbar-gutter: stable; }
+
+/* A pinned row has to show it while you are not hovering it — otherwise the
+   only thing marking it as pinned is its position, which is easy to misread. */
+.task-row.pinned { background: rgba(183,91,0,0.05); }
+.task-row.pinned .task-actions { opacity: 1; }
+.task-row.pinned .task-actions button:first-child { color: var(--amber-accent); }
+.acct-remove {
+  background: none; border: none; cursor: pointer; color: var(--ink-3);
+  width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.acct-remove:hover { background: rgba(186,26,26,0.08); color: var(--error); }
+.acct-remove .msym { font-size: 17px; }
+.acct-badge {
+  font-size: 10px; font-weight: 600; color: var(--ink-3);
+  background: rgba(225,227,228,0.55); border-radius: 999px; padding: 1px 7px;
+  flex-shrink: 0; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.btn-primary {
+  background: var(--primary); border: 1px solid var(--primary); color: #fff;
+  border-radius: 10px; padding: 9px 16px; font-size: 13px; font-weight: 500;
+  cursor: pointer; box-shadow: 0 2px 8px rgba(59,130,246,0.25);
+}
+.btn-primary:hover { background: var(--primary-deep); }
+.btn-primary:active { transform: translateY(1px); }
+
+/* ── Hero ── */
+.hero { padding: 32px; position: relative; overflow: hidden; display: flex; align-items: center; gap: 40px; }
+/* A radial gradient gives the same soft glow without a blur-filter buffer. */
+.hero-blur {
+  position: absolute; right: -80px; top: -80px; width: 380px; height: 380px; pointer-events: none;
+  background: radial-gradient(circle, rgba(59,130,246,0.10) 0%, rgba(59,130,246,0.04) 45%, transparent 70%);
+}
+.hero-main { flex: 1; z-index: 1; min-width: 0; }
+.hero-eyebrow { font-size: 12px; color: var(--primary); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+.hero h1 { font-size: 40px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.12; margin-bottom: 10px; }
+.hero-date { font-size: 17px; color: var(--ink-2); font-weight: 300; margin-bottom: 28px; }
+.hero-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.hero-tile { padding: 16px; position: relative; overflow: hidden; min-width: 0; }
+.hero-tile-label { font-size: 11px; color: var(--ink-2); text-transform: uppercase; margin-bottom: 4px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.hero-tile-value { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hero-tile-sub { font-size: 12px; color: var(--ink-2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-accent { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--amber-accent); }
+.pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber-accent); position: relative; flex-shrink: 0; }
+.pulse-dot::after {
+  content: ''; position: absolute; inset: -2px; border-radius: 50%;
+  background: inherit; animation: pulse-ring 2s cubic-bezier(0.215,0.61,0.355,1) infinite;
+}
+@keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 0.5; } 100% { transform: scale(2); opacity: 0; } }
+
+.donut-wrap { position: relative; width: 200px; height: 200px; flex-shrink: 0; z-index: 1; }
+.donut-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); filter: drop-shadow(0 4px 6px rgba(0,0,0,0.08)); }
+.donut-track { stroke: rgba(225,227,228,0.5); }
+.donut-fill { stroke: var(--primary); stroke-dasharray: 283; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+.donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.donut-pct { font-size: 44px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.donut-pct small { font-size: 22px; color: var(--ink-2); font-weight: 500; }
+.donut-cap { font-size: 11px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; font-weight: 500; }
+@media (max-width: 640px) {
+  .hero { flex-direction: column; padding: 24px; }
+  .hero-main { text-align: center; width: 100%; }
+  .hero h1 { font-size: 30px; }
+  .hero-tiles { text-align: left; }
+  .hero-tile-label { justify-content: flex-start; }
+  .donut-wrap { width: 160px; height: 160px; }
+}
+
+/* ── Day Briefing ── */
+.mini-card { padding: 24px; display: flex; flex-direction: column; }
+.mini-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; margin-bottom: 14px; }
+.mini-eyebrow .msym { font-size: 18px; }
+.briefing-card { background: linear-gradient(rgba(59,130,246,0.03), rgba(59,130,246,0.03)), var(--glass); }
+.briefing-card .mini-eyebrow { color: var(--primary); }
+.brief-regen {
+  margin-left: auto; background: none; border: none; cursor: pointer;
+  color: var(--ink-3); width: 26px; height: 26px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+.brief-regen:hover { background: rgba(0,0,0,0.05); color: var(--primary); }
+.brief-regen .msym { font-size: 17px; }
+.briefing-body { font-size: 15px; line-height: 1.6; color: var(--ink); }
+
+/* ── Section heads / chips ── */
+.section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.section-head h2, .card-h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
+.count-chip { background: rgba(59,130,246,0.1); color: var(--primary-deep); font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 9px; font-variant-numeric: tabular-nums; }
+.count-chip.neutral { background: rgba(225,227,228,0.6); color: var(--ink-2); }
+.text-btn { color: var(--primary); font-size: 13px; font-weight: 500; background: none; border: none; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+.text-btn:hover { text-decoration: underline; }
+.spinner {
+  display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(0,0,0,0.08);
+  border-top-color: var(--ink-3); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading, .empty { text-align: center; color: var(--ink-3); padding: 20px 0; font-size: 13px; }
+.error { color: var(--error); font-size: 12px; text-align: center; padding: 12px 0; }
+@media (prefers-reduced-motion: reduce) {
+  .spinner, .pulse-dot::after { animation: none; }
+  .donut-fill, .toast { transition: none; }
+}
+
+/* ── Tasks ── */
+.tasks { padding: 24px; }
+.task-list { display: flex; flex-direction: column; gap: 10px; }
+.task-row { display: flex; align-items: flex-start; gap: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid transparent; transition: background 0.15s; }
+.task-row:hover { background: rgba(255,255,255,0.4); }
+.task-row.urgent { background: rgba(255,255,255,0.5); border-color: rgba(186,26,26,0.15); }
+.task-check {
+  width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #c2c6d6;
+  background: #fff; cursor: pointer; flex-shrink: 0; margin-top: 1px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.task-check:hover { border-color: var(--primary); }
+.task-check.overdue { border-color: rgba(186,26,26,0.5); }
+.task-main { flex: 1; min-width: 0; }
+.task-title { font-size: 14px; font-weight: 500; overflow-wrap: break-word; }
+.task-meta { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+.task-desc { font-size: 12px; color: var(--ink-2); margin-top: 4px; line-height: 1.5; white-space: pre-wrap; }
+.task-link { font-size: 12px; margin-top: 4px; }
+.task-link a { color: var(--primary); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.task-link a:hover { text-decoration: underline; }
+.task-link .msym { font-size: 14px; }
+.link-btn {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--primary); font-size: 12px; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.link-btn:hover { text-decoration: underline; }
+.cal-tag { color: var(--teal); }
+.due-chip {
+  font-size: 11.5px; font-weight: 500; border-radius: 8px; padding: 4px 10px;
+  background: rgba(225,227,228,0.4); color: var(--ink-2); white-space: nowrap;
+  display: flex; align-items: center; gap: 4px; flex-shrink: 0; margin-top: 2px;
+  border: 1px solid rgba(255,255,255,0.6); box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.due-chip.soon { background: rgba(183,91,0,0.1); color: var(--amber-accent); border-color: transparent; }
+.due-chip.overdue { background: rgba(186,26,26,0.1); color: var(--error); border-color: transparent; }
+.due-chip .msym { font-size: 14px; }
+.task-actions { display: flex; gap: 2px; align-self: center; opacity: 0; transition: opacity 0.15s; }
+.task-row:hover .task-actions, .task-row:focus-within .task-actions { opacity: 1; }
+@media (hover: none) { .task-actions { opacity: 1; } }
+.task-actions button {
+  background: none; border: none; cursor: pointer; color: var(--ink-3);
+  width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+}
+.task-actions button:hover { background: rgba(0,0,0,0.05); color: var(--ink); }
+.task-actions .msym { font-size: 17px; }
+/* Pinned and "add to Google Calendar" are the point of the Course Deadlines card rather than
+   a convenience — they are how that list gets triaged — and leaving them hover-only made the
+   whole card read as static until you happened to sweep the mouse across a row. Scoped to
+   this card deliberately: in the Tasks list the actions stay quiet until you hover. */
+.courses-card .task-actions { opacity: 1; }
+/* ── RSVP ── */
+.rsvp { padding: 20px; background: linear-gradient(rgba(255,255,255,0.8), rgba(255,255,255,0.4)); border-color: rgba(59,130,246,0.2); box-shadow: 0 8px 30px rgba(59,130,246,0.1); }
+.rsvp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.rsvp-head h2 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.rsvp-head .msym { color: var(--primary); font-size: 18px; }
+.rsvp-badge { background: var(--primary); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.invite { background: rgba(255,255,255,0.6); border-radius: 12px; padding: 16px; border: 1px solid #fff; }
+.invite + .invite { margin-top: 10px; }
+.invite-inner { display: flex; gap: 12px; align-items: flex-start; }
+.invite-avatar {
+  width: 40px; height: 40px; border-radius: 50%; background: rgba(59,130,246,0.1);
+  border: 1px solid rgba(59,130,246,0.2); color: var(--primary);
+  display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 13px; flex-shrink: 0;
+}
+.invite-body { flex: 1; min-width: 0; }
+.invite-title { font-size: 14px; font-weight: 500; }
+.invite-title a { color: inherit; text-decoration: none; }
+.invite-time { font-size: 12px; color: var(--primary); font-weight: 500; margin-top: 3px; }
+.invite-meta { font-size: 12px; color: var(--ink-2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.invite-btns { display: flex; gap: 8px; margin-top: 14px; }
+.invite-btns button { flex: 1; font-size: 12px; font-weight: 500; padding: 7px; border-radius: 8px; cursor: pointer; }
+.btn-decline { background: #fff; border: 1px solid rgba(0,0,0,0.1); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.btn-decline:hover { background: rgba(225,227,228,0.5); }
+.btn-accept { background: var(--primary); border: 1px solid var(--primary); color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+.btn-accept:hover { background: var(--primary-deep); }
+.rsvp-done { font-size: 12px; font-weight: 600; margin-top: 14px; display: inline-block; padding: 4px 10px; border-radius: 8px; }
+.rsvp-done.accepted { color: #15803d; background: rgba(21,128,61,0.1); }
+.rsvp-done.declined { color: var(--error); background: rgba(186,26,26,0.1); }
+
+/* A folded invite series. Same card as a single invite — one row is one decision — with the
+   individual occurrences available underneath rather than printed one after another, which
+   is what let five dates of the same weekly invite bury everything else in the card. */
+.invite-group .invite-title { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.invite-toggle { margin-top: 10px; font-size: 12px; color: var(--ink-2); }
+.invite-instances { margin-top: 12px; padding-top: 4px; border-top: 1px dashed rgba(0,0,0,0.08); }
+.invite-instance { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }
+.invite-instance + .invite-instance { border-top: 1px solid rgba(0,0,0,0.05); }
+.invite-instance-when { font-size: 12px; color: var(--ink-2); }
+.invite-instance .invite-btns { margin-top: 0; flex: 0 0 auto; }
+.invite-instance .invite-btns button { flex: 0 0 auto; padding: 5px 12px; }
+
+/* ── Schedule timeline ── */
+.schedule { padding: 24px; max-height: 560px; overflow-y: auto; position: relative; }
+.schedule-sticky {
+  position: sticky; top: -24px; margin: -8px 0 16px; padding: 8px 0 12px;
+  background: rgba(255,255,255,0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  z-index: 5; border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.timeline { position: relative; padding-left: 46px; }
+.timeline::before { content: ''; position: absolute; left: 8px; top: 4px; bottom: 0; width: 1px; background: rgba(0,0,0,0.1); }
+.tl-day { position: relative; padding-bottom: 24px; }
+.tl-day:last-child { padding-bottom: 4px; }
+.tl-day-dot { position: absolute; left: -43px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); border: 2px solid #f0f2f5; }
+.tl-day-dot.dim { background: #c2c6d6; width: 8px; height: 8px; left: -42px; }
+.tl-day h3 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--primary); margin-bottom: 16px; margin-left: -24px; }
+.tl-day h3.dim { color: var(--ink-2); font-weight: 500; }
+.tl-events { display: flex; flex-direction: column; gap: 16px; }
+.tl-event { position: relative; }
+.tl-time { position: absolute; left: -46px; width: 36px; text-align: right; font-size: 11px; color: var(--ink-3); padding-top: 4px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.tl-card { background: #fff; border-radius: 12px; padding: 12px 14px; border: 1px solid var(--line); box-shadow: 0 1px 3px rgba(0,0,0,0.04); position: relative; overflow: hidden; }
+.tl-card .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+.tl-title { font-size: 13.5px; font-weight: 500; }
+.tl-title a { color: inherit; text-decoration: none; }
+.tl-meta { font-size: 11px; color: var(--ink-2); margin-top: 3px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tl-meta .msym { font-size: 14px; }
+.tl-meta a { color: var(--primary); text-decoration: none; }
+.ev-del {
+  position: absolute; top: 5px; right: 5px;
+  background: rgba(255,255,255,0.9); border: 1px solid var(--line); border-radius: 6px;
+  width: 20px; height: 20px; padding: 0; cursor: pointer; color: var(--ink-3);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+.tl-card:hover .ev-del, .ev-del:focus-visible { opacity: 1; }
+.ev-del:hover { color: var(--error); border-color: rgba(186,26,26,0.35); }
+.ev-del .msym { font-size: 14px; }
+@media (hover: none) { .ev-del { opacity: 1; } }
+
+.tl-card.current { background: rgba(59,130,246,0.03); border-color: rgba(59,130,246,0.2); }
+.tl-card.ghost { background: rgba(255,255,255,0.45); border-style: dashed; border-color: rgba(0,0,0,0.1); box-shadow: none; }
+.tl-card.ghost .tl-title { font-style: italic; font-weight: 400; color: var(--ink-2); font-size: 12.5px; }
+.now-line { position: relative; height: 0; z-index: 4; }
+.now-line-bar { position: absolute; left: -38px; right: 0; top: 0; height: 1px; background: rgba(59,130,246,0.5); }
+.now-tag { position: absolute; right: 0; top: -9px; background: var(--primary); color: #fff; font-size: 10px; font-weight: 500; padding: 2px 6px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+.tl-empty { font-size: 12px; color: var(--ink-3); font-style: italic; margin-left: 4px; }
+.cal-warn {
+  background: rgba(186,26,26,0.08); border: 1px solid rgba(186,26,26,0.2);
+  border-radius: 10px; padding: 10px 12px; margin-bottom: 14px;
+  font-size: 11.5px; color: var(--error); line-height: 1.5; word-break: break-word;
+}
+.cal-warn strong { display: block; margin-bottom: 4px; font-size: 12px; }
+
+/* ── Week ── */
+.week { padding: 24px; }
+.week-rows { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; }
+.week-row { display: flex; gap: 14px; align-items: flex-start; }
+.week-when { width: 40px; text-align: right; flex-shrink: 0; padding-top: 6px; }
+.week-dow { font-size: 12px; font-weight: 500; color: var(--ink-2); text-transform: uppercase; }
+.week-date { font-size: 10px; color: var(--ink-3); }
+.week-card { flex: 1; background: rgba(255,255,255,0.6); border-radius: 10px; padding: 10px 12px; border: 1px solid var(--line); box-shadow: 0 1px 3px rgba(0,0,0,0.03); min-width: 0; }
+.week-card.empty-day { background: rgba(255,255,255,0.3); box-shadow: none; }
+.week-ev { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; padding: 2px 0; min-width: 0; }
+.week-ev .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.week-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.week-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.busy-bar { display: inline-flex; gap: 2px; }
+.busy-seg { width: 7px; height: 7px; border-radius: 2px; background: rgba(0,0,0,0.06); }
+.week-n { font-size: 11px; color: var(--ink-3); }
+.week-none { font-size: 12px; color: var(--ink-3); }
+.week-rsvp { font-size: 10px; font-weight: 600; color: var(--amber-accent); background: rgba(183,91,0,0.1); border-radius: 999px; padding: 1px 7px; margin-left: auto; flex-shrink: 0; }
+
+/* ── Dock ── */
+.dock-wrap { position: fixed; bottom: 16px; left: 0; width: 100%; z-index: 50; display: flex; justify-content: center; pointer-events: none; padding: 0 16px; }
+/* Sits over scrolling content, so it needs its own opacity now that the shared
+   .mac-window fill no longer blurs. */
+.dock {
+  border-radius: 14px; padding: 5px; display: flex; align-items: center; gap: 5px;
+  pointer-events: auto; background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.dock button {
+  width: 36px; height: 36px; border-radius: 10px; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: none; color: var(--ink-2); position: relative; transition: background 0.15s, transform 0.15s;
+}
+.dock button:hover { background: rgba(255,255,255,0.5); }
+.dock button.active { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid var(--line); color: var(--primary); }
+.dock button.active::after { content: ''; position: absolute; bottom: -3px; width: 3px; height: 3px; background: var(--primary); border-radius: 50%; }
+.dock .msym { font-size: 19px; }
+.dock-sep { width: 1px; height: 24px; background: rgba(0,0,0,0.1); margin: 0 3px; }
+.dock-add {
+  background: var(--primary) !important; color: #fff !important; border-radius: 50% !important;
+  box-shadow: 0 3px 10px rgba(59,130,246,0.35) !important; margin: 0 3px;
+}
+.dock-add:hover { transform: scale(1.06); }
+.dock-add .msym { font-size: 20px; }
+.dock button:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%);
+  background: rgba(30,33,40,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  color: #f6f7f9; padding: 10px 14px 10px 16px; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  font-size: 12px; display: flex; align-items: center; gap: 12px; z-index: 60;
+  opacity: 0; transition: opacity 0.2s ease; pointer-events: none; white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3); overflow: hidden;
+}
+.toast.show { opacity: 1; pointer-events: auto; }
+.toast-undo { background: none; border: none; color: #8cb0f8; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; }
+.toast-bar { position: absolute; bottom: 0; left: 0; height: 2px; background: var(--primary); width: 100%; transform-origin: left; }
+
+/* ── Todo modal (bottom sheet) ── */
+.todo-overlay {
+  position: fixed; inset: 0; background: rgba(18,22,30,0.4);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  display: none; align-items: flex-end; justify-content: center; z-index: 55;
+}
+.todo-overlay.open { display: flex; }
+.todo-modal {
+  background: rgba(255,255,255,0.92); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border); border-bottom: none;
+  border-radius: 16px 16px 0 0; padding: 22px 20px 32px; width: 100%; max-width: 520px;
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.15);
+}
+.todo-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.todo-modal-heading { font-size: 15px; font-weight: 600; }
+.icon-btn {
+  background: rgba(225,227,228,0.5); border: none; border-radius: 8px; width: 28px; height: 28px;
+  font-size: 13px; color: var(--ink-2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.icon-btn:hover { background: rgba(0,0,0,0.08); }
+.icon-btn .msym { font-size: 18px; }
+.todo-form-label { font-size: 11px; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; display: block; }
+.todo-input {
+  width: 100%; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 9px 11px;
+  font-size: 13px; color: var(--ink); font-family: inherit; background: rgba(255,255,255,0.7);
+  margin-bottom: 12px; outline: none; resize: vertical; line-height: 1.5;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.todo-input:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
+.todo-input::placeholder { color: var(--ink-3); }
+.input-row { display: flex; gap: 8px; align-items: flex-start; }
+.input-row .todo-input { flex: 1; min-width: 0; }
+.browse-btn {
+  flex-shrink: 0; background: rgba(255,255,255,0.7); border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px; padding: 9px 12px; font-size: 12.5px; font-weight: 500;
+  color: var(--ink-2); cursor: pointer; display: flex; align-items: center; gap: 5px;
+}
+.browse-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: #fff; }
+.browse-btn:disabled { opacity: 0.6; cursor: default; }
+.browse-btn .msym { font-size: 16px; }
+
+.todo-cal-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 12.5px; color: var(--ink-2); }
+.todo-cal-row input { width: 15px; height: 15px; accent-color: var(--primary); }
+.todo-btn-row { display: flex; gap: 8px; }
+.todo-btn { flex: 1; padding: 10px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
+.todo-btn:active { transform: translateY(1px); }
+.todo-btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 8px rgba(59,130,246,0.25); }
+.todo-btn-primary:hover { background: var(--primary-deep); }
+.todo-btn-cancel { background: rgba(225,227,228,0.6); color: var(--ink-2); }
+.todo-err { font-size: 11px; color: var(--error); margin-bottom: 8px; min-height: 14px; }
+
+/* ── Month modal ── */
+.month-overlay, .avail-overlay {
+  position: fixed; inset: 0; background: rgba(18,22,30,0.4);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  /* The 61px top padding is the header's height (47) plus the 14px this had all round. It is
+     what keeps the modal clear of the header now that the header draws above the backdrop. */
+  display: none; align-items: center; justify-content: center; z-index: 55; padding: 61px 14px 14px;
+}
+.month-overlay.open, .avail-overlay.open { display: flex; }
+
+/* Same breakpoint the header disappears at. With no header there is nothing for the top
+   padding above to reserve, and it would read as 61px of nothing above the modal. It has to
+   sit here rather than up with the other narrow rules: equal specificity, so whichever comes
+   last wins, and that is the base rule at the top of this block. */
+@media (max-width: 900px) { .month-overlay, .avail-overlay { padding: 14px; } }
+.month-modal, .avail-modal {
+  background: rgba(255,255,255,0.92); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border); border-radius: 16px;
+  padding: 18px 20px; width: 100%; max-width: 440px; max-height: 100%; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.month-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; }
+.month-modal-title { font-size: 15px; font-weight: 600; }
+.month-head-actions { display: flex; align-items: center; gap: 10px; }
+
+/* Compact / Expanded segmented control */
+.seg { display: flex; background: rgba(225,227,228,0.55); border-radius: 9px; padding: 2px; }
+.seg button {
+  border: none; background: none; cursor: pointer; font-family: inherit;
+  font-size: 11.5px; font-weight: 500; color: var(--ink-2);
+  padding: 4px 10px; border-radius: 7px;
+}
+.seg button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
+.month-nav-label { font-size: 13px; font-weight: 600; }
+.month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.month-grid-body { margin-top: 3px; }
+.month-loading { grid-column: 1 / -1; }
+.month-dow { font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--ink-3); text-align: center; padding-bottom: 4px; }
+.month-cell {
+  aspect-ratio: 1; border-radius: 9px; padding: 3px 2px 4px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  background: rgba(255,255,255,0.55); border: 2px solid transparent;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+.month-cell.empty { background: transparent; cursor: default; box-shadow: none; }
+.month-cell.today { background: rgba(59,130,246,0.12); }
+.month-cell.selected { border-color: var(--primary); }
+.month-cell .dnum { font-size: 11px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.month-cell.today .dnum { color: var(--primary-deep); }
+.month-cell.past .dnum { color: #c2c6d6; }
+.month-dots { display: flex; gap: 1.5px; margin-top: 3px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+.month-dot { width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; }
+/* ── Month: expanded view (event titles in the cells) ── */
+.month-modal.expanded { max-width: min(1120px, 95vw); }
+.month-modal.expanded .month-cell {
+  aspect-ratio: auto; min-height: 104px; align-items: stretch;
+  padding: 4px 4px 5px; gap: 2px; overflow: hidden;
+}
+.month-modal.expanded .month-cell .dnum { align-self: center; margin-bottom: 1px; }
+.month-modal.expanded .month-events { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* The calendar's colour is carried by a tint of the chip itself rather than a
+   stripe down one side. Timed events stay tinted, all-day stays solid — two
+   kinds, two encodings, same as before, without the side rule. */
+.mev {
+  display: block; font-size: 10.5px; line-height: 1.35; text-align: left;
+  padding: 1px 5px; border-radius: 4px;
+  background: rgba(255,255,255,0.75);                        /* if color-mix is unsupported */
+  background: color-mix(in srgb, var(--c, #94a3b8) 20%, #fff);
+  color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mev.allday { background: var(--c, #94a3b8); color: #fff; }
+.mev-time { color: var(--ink-3); font-variant-numeric: tabular-nums; margin-right: 3px; }
+.mev-more { font-size: 10px; color: var(--ink-3); padding-left: 5px; }
+@media (max-width: 720px) {
+  .month-modal.expanded .month-cell { min-height: 74px; }
+  .mev { font-size: 9px; padding: 1px 2px 1px 4px; }
+  .mev-time { display: none; }
+}
+
+.month-day-detail { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 11px; }
+.month-day-detail-title { font-size: 11px; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+.month-day-detail .tl-events { gap: 10px; }
+
+/* ── Task tools: search, sort, reminders ── */
+.task-tools { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.task-search {
+  display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
+  background: rgba(255,255,255,0.6); border: 1px solid var(--line);
+  border-radius: 9px; padding: 6px 10px;
+}
+.task-search .msym { font-size: 16px; color: var(--ink-3); }
+.task-search input {
+  border: 0; background: none; outline: none; font-family: inherit;
+  font-size: 13px; color: var(--ink); width: 100%; min-width: 0;
+}
+.task-sort {
+  font-family: inherit; font-size: 12px; color: var(--ink-2); cursor: pointer;
+  background: rgba(255,255,255,0.6); border: 1px solid var(--line);
+  border-radius: 9px; padding: 6px 8px;
+}
+.reminder-btn { flex-shrink: 0; }
+.reminder-btn.on { color: var(--primary-deep); background: rgba(59,130,246,0.12); }
+
+/* Only ever drawn when something is actually late or due, so the card stays quiet otherwise. */
+.due-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.due-flag {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+  font-weight: 600; border-radius: 999px; padding: 4px 11px;
+}
+.due-flag .msym { font-size: 15px; }
+.due-flag.overdue { background: rgba(186,26,26,0.1); color: var(--error); }
+.due-flag.today   { background: rgba(183,91,0,0.12); color: var(--amber-accent); }
+
+/* ── Flagged, snoozed and completed rows ── */
+.task-row.flagged { background: rgba(183,91,0,0.05); }
+.flag-btn.on { color: var(--amber-accent); }
+
+/* Sits under its own row rather than inside it — the row is a flex line, and a menu that
+   joined it would push the title around when it opened. */
+.snooze-menu {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: -4px 0 4px 44px; padding: 8px 12px; border-radius: 10px;
+  background: rgba(255,255,255,0.7); border: 1px solid var(--line);
+}
+.snooze-label { font-size: 12px; color: var(--ink-2); }
+.snooze-menu button {
+  font-family: inherit; font-size: 12px; color: var(--ink); cursor: pointer;
+  background: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
+}
+.snooze-menu button:hover { background: rgba(0,0,0,0.05); }
+.snooze-cancel { color: var(--ink-3); border-color: transparent; }
+
+.task-row.snoozed { opacity: 0.62; }
+.snooze-icon { font-size: 18px; color: var(--ink-3); align-self: center; padding-left: 2px; }
+.task-row.completed .task-title { text-decoration: line-through; color: var(--ink-2); }
+.task-check.checked { background: var(--primary); border-color: var(--primary); }
+.task-check.checked::after { content: "✓"; color: #fff; font-size: 12px; line-height: 1; }
+
+.task-sub {
+  display: flex; align-items: center; gap: 7px; margin: 16px 0 8px;
+  font-size: 12px; font-weight: 600; color: var(--ink-2);
+}
+.task-sub-toggle { cursor: pointer; user-select: none; }
+.task-sub-toggle .text-btn { margin-left: auto; }
+.done-list { opacity: 0.85; }
+
+/* ── Find a time ── */
+.avail-modal { max-width: 560px; }
+.avail-note { font-size: 12px; line-height: 1.5; color: var(--ink-2); margin-bottom: 14px; }
+.avail-add { display: flex; gap: 8px; margin-bottom: 10px; }
+.avail-add .todo-input { flex: 1; min-width: 0; margin-bottom: 0; }
+.avail-people { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.avail-people:empty { display: none; }
+.avail-chip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 12px;
+  background: rgba(59,130,246,0.1); color: var(--primary-deep);
+  border-radius: 999px; padding: 4px 6px 4px 12px;
+}
+.avail-chip button { display: flex; background: none; border: 0; padding: 0; cursor: pointer; color: inherit; }
+.avail-chip .msym { font-size: 15px; }
+.avail-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.avail-controls .todo-form-label { margin: 0; }
+
+.avail-legend { display: flex; align-items: center; gap: 14px; font-size: 11px; color: var(--ink-2); margin-bottom: 10px; }
+.avail-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.avail-window { margin-left: auto; }
+.avail-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.avail-swatch.busy { background: rgba(186,26,26,0.45); }
+.avail-swatch.best { background: rgba(34,197,94,0.5); }
+
+/* A calendar that was never shared is reported, not quietly drawn as a free day. */
+.avail-warn {
+  display: flex; align-items: flex-start; gap: 7px; font-size: 12px; line-height: 1.45;
+  background: rgba(183,91,0,0.1); color: var(--amber-accent);
+  border-radius: 10px; padding: 9px 12px; margin-bottom: 12px;
+}
+.avail-warn .msym { font-size: 16px; }
+
+.avail-day { padding: 9px 0; }
+.avail-day + .avail-day { border-top: 1px solid rgba(0,0,0,0.05); }
+.avail-day-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.avail-count { color: var(--ink-2); font-weight: 500; }
+.avail-track { position: relative; height: 14px; border-radius: 7px; background: rgba(0,0,0,0.05); overflow: hidden; }
+.avail-busy { position: absolute; top: 0; bottom: 0; background: rgba(186,26,26,0.4); }
+.avail-best { position: absolute; top: 0; bottom: 0; background: rgba(34,197,94,0.35); }
+.avail-slots { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+.avail-slot {
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  background: rgba(34,197,94,0.12); color: #15803d; border-radius: 999px; padding: 3px 9px;
+}
+.avail-none { font-size: 11px; color: var(--ink-3); }
