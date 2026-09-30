@@ -5,7 +5,8 @@ zero npm dependencies (Node ≥ 22.13).
 
 ## Install (for anyone)
 
-Needs [Node.js](https://nodejs.org) 22.13+ and git. You need access to this repo on GitHub.
+Needs [Node.js](https://nodejs.org) 22.13+ and git (on a Mac, `brew install node`; git comes with
+the Command Line Tools, which macOS offers to install the first time you run `git`).
 
 ```bash
 git clone https://github.com/RejuvenationCh/attention-dashboard.git
@@ -22,6 +23,10 @@ Your tasks, sign-ins and settings stay on your computer (all gitignored). The da
 itself: every few hours it checks for a newer release and restarts into it. Settings shows the
 version. To turn that off, add `"autoUpdate": false` to `config.json`.
 
+To remove it (macOS): `launchctl bootout gui/$UID/com.attention-dashboard`, delete
+`~/Library/LaunchAgents/com.attention-dashboard.plist`, then the folder. On Windows, delete the
+"Attention Dashboard" task in Task Scheduler, then the folder.
+
 ## Releasing an update
 
 Commit to `main` as usual; installs only move when there is a new version tag:
@@ -34,48 +39,39 @@ git push --follow-tags
 Every install picks it up within about 6 hours. One with local edits to tracked files skips the
 update and says so in Settings.
 
-## Chris's own setup
+## Reference
 
-## Run
+Everything below is detail for whoever works on the code. The examples use port 3000; an
+installed copy uses the port in `config.json`.
 
-The server auto-starts at login via a LaunchAgent
-(`~/Library/LaunchAgents/com.chris.attention-dashboard.plist`) and restarts if it
-crashes. Just open http://localhost:3000. Logs: `/tmp/attention-dashboard.log`.
+### Files that stay on your computer
 
-```
-launchctl kickstart -k gui/$UID/com.chris.attention-dashboard   # restart (e.g. after editing .env)
-launchctl bootout gui/$UID/com.chris.attention-dashboard        # stop + disable until next login
-npm start                                                        # manual run, if the agent is stopped
-```
+All gitignored: `config.json` (port, name, eLearn URL, `autoUpdate`), `tasks.db*` (tasks),
+`tokens.json` (Google sign-ins), `reminders.json`, `courses.json` (course names), `dashboard.log`.
+`.env` is optional and overrides `config.json` and `oauth-client.json` (see `.env.example`).
 
-## One-time setup
+### Google client
 
-### 1. Google Cloud Console (Calendar)
+`oauth-client.json` is a shared **Desktop app** OAuth client, committed on purpose: Google treats
+an installed app's secret as non-confidential, and a Desktop client accepts
+`http://localhost:<any port>` without registering it. Its consent screen is **In production**, so
+refresh tokens don't expire after 7 days; being unverified only means the one-time warning
+screen. To use your own client instead, create a Desktop client with the Calendar API enabled
+and set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `.env`. Sign-ins made with one client
+don't carry over to another, so reconnect the accounts after switching.
 
-1. Create/reuse a project at https://console.cloud.google.com
-2. Enable the **Google Calendar API** (APIs & Services → Library).
-3. OAuth consent screen: User type **External**, add each Google account you'll
-   connect as a **Test user**.
-4. Credentials → **OAuth 2.0 Client ID** → type **Web application**:
-   - Authorized redirect URI: `http://localhost:3000/oauth/callback`
-5. Put the Client ID **and Client secret** in `.env`.
-
-Publishing status **Testing** expires refresh tokens after 7 days (you'd re-connect
-weekly). Switching to **In production** keeps them alive indefinitely; the app stays
-unverified, which only means a one-time "Google hasn't verified this app" screen.
-
-### 2. Moodle (eLearn UC) calendar
+### eLearn (Moodle) calendar
 
 In Moodle: **Calendar → Export calendar** → pick the events and time range →
-**Get URL for subscription**. Paste that whole URL into `.env` as
-`MOODLE_ICS_URL=…`. It already carries your `userid` and `authtoken`, so treat it
-as a password: `.env` is gitignored and the server never sends the URL to the
-browser — only the parsed events. Leave it empty to switch the feed off.
+**Get URL for subscription**. Paste that whole URL into **Settings → eLearn calendar**
+(or `.env` as `MOODLE_ICS_URL=…`). It already carries your `userid` and `authtoken`, so treat
+it as a password: it is stored in the gitignored `config.json`, and the server never sends it
+to the browser, only the parsed events. Clear the field to switch the feed off.
 
 **Set the export's time range to a wide custom span, not the default.** Moodle's
 "recent and upcoming" preset covers roughly 60 days either side of today and
 silently drops everything further out — a whole course's worth of deadlines can
-sit past that line and never appear. The URL in `.env` uses
+sit past that line and never appear. The URL should use
 `preset_time=custom&timefrom=…&timeto=…` (currently 2025-01-01 → 2030-01-01).
 The card filters to the next year on its own, so the export range only has to be
 a superset of it; widening it costs nothing, since Moodle only emits events for
@@ -84,7 +80,7 @@ activities that have a date.
 Each course becomes its own toggleable calendar, coloured from a fixed palette and
 named via `courses.json` (below); anything uncategorised lands in an "eLearn UC"
 bucket. It appears as its own account in the Accounts card, with no disconnect
-button (it is configured in `.env`, not by signing in).
+button (it is set in Settings, not by signing in).
 
 **Only courses with at least one dated activity appear.** Moodle creates a calendar
 event for an assignment or quiz only when that activity carries a date, so a course
@@ -149,7 +145,7 @@ display preference and live in `localStorage`
 (`chris-dashboard-pinned-deadlines-v1`), beside the hidden-calendar set.
 
 Adding to the calendar is the only thing this card writes, and it writes to Google,
-never to campus — the toast's Undo deletes the event it just created.
+never to campus. The toast's Undo deletes the event it just created.
 
 The browser cannot fetch the feed itself — Moodle sends no CORS headers and the
 `authtoken` must stay on this machine — so the server proxies it at
@@ -158,10 +154,9 @@ It refetches upstream at most every 10 minutes and serves the last good copy if
 campus is down; a failure returns 502 with the reason and leaves the rest of the
 dashboard working.
 
-**Time zones:** campus runs on `Asia/Jakarta` (UTC+7), while the dashboard
-renders `Asia/Makassar` (WITA, UTC+8). Timestamps that carry a `Z` are converted
-into the dashboard's zone so an event lands on the right day; wall-clock
-timestamps (no `Z`) are taken as already-local and passed through untouched.
+**Time zones:** the dashboard uses the computer's own time zone. eLearn deadlines are
+shown on eLearn's own clock (`Asia/Jakarta`, UTC+7), so "due 23:59" reads 23:59 as it does
+on eLearn's page; east of Jakarta that is slightly early, the safe direction to be wrong in.
 
 ## Tasks API
 
@@ -201,7 +196,7 @@ sqlite3 tasks.db "insert into todos (id, title, deadline) values (hex(randomblob
 Column note: the SQL column is `description` (JSON field `desc`), because `desc` is
 a SQL keyword. Writes through the API are transactional.
 
-### Adding a task from anywhere (F3)
+### Adding a task from anywhere (F3, macOS + Hammerspoon, optional)
 
 `public/add-task.html` is bound to **F3** in Hammerspoon, and it is the dashboard's own
 **New Task modal** — the same markup and the same `style.css`, served by this server, so
@@ -239,8 +234,7 @@ and the server mints a fresh access token as needed. The OAuth client secret nev
 reaches the browser.
 
 The Moodle feed sits outside this model: it has no OAuth and no token store, just
-the credential embedded in `MOODLE_ICS_URL`, read from `.env` by the server and
-never sent to the browser.
+the credential embedded in the export URL, kept by the server and never sent to the browser.
 
 When a refresh token stops working, the account stays listed in the Accounts card
 marked **Signed out**, with a Reconnect button, instead of silently disappearing —
