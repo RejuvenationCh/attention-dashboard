@@ -5,7 +5,7 @@
   "description": "A personal calendar/todo attention dashboard (standalone localhost port)",
   "scripts": {
     "start": "node server.js",
-    "test": "node --check server.js && node --check public/app.js && node test-moodle.js && node updater.js && node check-icons.js && node test-smoke.js",
+    "test": "node --check server.js && node --check public/app.js && node test-moodle.js && node updater.js && node check-icons.js && node test-quickadd.js && node test-smoke.js",
     "release": "node release.js"
   },
   "engines": {

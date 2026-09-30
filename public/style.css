@@ -738,6 +738,29 @@ kbd {
   padding: 5px 7px; border-radius: 6px; color: var(--ink);
   background: rgba(var(--n),0.6); border: 1px solid var(--line); box-shadow: 0 1px 0 rgba(var(--k),0.08);
 }
+.step-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.step-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--primary); flex: none; }
+.step-row .step-text { flex: 1; padding: 6px 9px; margin: 0; }
+#todo-modal-step { margin-bottom: 14px; }
+.task-tabs { margin-left: auto; margin-right: 14px; }
+.task-tabs button.active { background: rgb(var(--w)); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.quick-add { margin-bottom: 10px; }
+.quick-add .todo-input { margin-bottom: 0; }
+.quick-add-preview { font-size: 12px; color: var(--primary); margin: 5px 2px 0; min-height: 0; }
+.quick-add-preview:empty { display: none; }
+#todo-tags { margin: 10px 0 2px; }
+.task-tag, .steps-tag {
+  font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; border: none;
+  border-radius: 999px; padding: 1px 7px; margin-left: 2px;
+  color: var(--primary-deep); background: rgba(var(--a),0.1);
+}
+.steps-tag { color: var(--ink-2); background: rgba(var(--n),0.6); margin-left: 0; }
+.steps-tag.all { color: var(--teal); background: rgba(13,148,136,0.12); }
+.task-steps { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 2px; }
+.task-step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); cursor: pointer; }
+.task-step input { width: 14px; height: 14px; accent-color: var(--primary); margin: 0; }
+.task-step.done { color: var(--ink-3); text-decoration: line-through; }
+.done-summary { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--ink-2); margin: 4px 0 -4px; }
 .settings-section {
   margin: 20px 0 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--primary);
@@ -755,6 +778,7 @@ kbd {
 #settings-writecal { width: 210px; }
 .settings-num  { width: 74px; text-align: center; }
 .settings-text { width: 122px; }
+.settings-wide { width: 170px; }
 .settings-pair { display: flex; align-items: center; gap: 7px; flex: none; font-size: 12px; color: var(--ink-2); }
 .settings-pair .settings-num { width: 62px; }
 .settings-modal .todo-btn-row { margin-top: 18px; }

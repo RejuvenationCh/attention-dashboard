@@ -89,7 +89,18 @@
     <section class="mac-window tasks">
       <div class="section-head">
         <h2>Tasks <span class="count-chip" id="todo-count">–</span></h2>
+        <div class="seg task-tabs">
+          <button id="tab-todo" onclick="setTaskTab('todo')">To do</button>
+          <button id="tab-done" onclick="setTaskTab('done')">Done</button>
+        </div>
         <button class="text-btn" onclick="openTodoModal()"><span class="msym" style="font-size:18px">add</span> New Task</button>
+      </div>
+      <!-- Quick add: one line, parsed by quickadd.js. The preview says what it understood. -->
+      <div class="quick-add" id="quick-add-wrap">
+        <input class="todo-input" id="quick-add" type="text" autocomplete="off"
+               placeholder="Quick add: essay due fri 5pm #school !"
+               oninput="previewQuickAdd(this.value)" onkeydown="if(event.key==='Enter') quickAdd(this)">
+        <div class="quick-add-preview" id="quick-add-preview"></div>
       </div>
       <!-- Only rendered when something is actually overdue or due today, so the card stays
            quiet on a normal day. -->
@@ -107,6 +118,7 @@
         <button class="icon-btn reminder-btn" id="reminder-btn" onclick="toggleReminders()"
                 title="Remind me about tasks that are due"><span class="msym">notifications_none</span></button>
       </div>
+      <div class="type-pills" id="todo-tags" hidden></div>
       <div id="todo-list"><div class="loading"><span class="spinner"></span></div></div>
     </section>
 
@@ -223,6 +235,13 @@
     <input class="todo-input" id="todo-modal-title" type="text" placeholder="What needs to be done?" onkeydown="if(event.key==='Enter') saveTodo()">
     <label class="todo-form-label">Description (optional)</label>
     <textarea class="todo-input" id="todo-modal-desc" rows="2" placeholder="Any notes or context…"></textarea>
+    <label class="todo-form-label">Steps (optional)</label>
+    <div id="todo-modal-steps"></div>
+    <input class="todo-input" id="todo-modal-step" type="text" placeholder="Add a step, then Enter"
+           onkeydown="if(event.key==='Enter'){event.preventDefault(); addModalStep(this.value); this.value='';}">
+    <label class="todo-form-label">Tags (optional)</label>
+    <input class="todo-input" id="todo-modal-tags" type="text" list="todo-tag-list" autocomplete="off" placeholder="school, urgent">
+    <datalist id="todo-tag-list"></datalist>
     <label class="todo-form-label">Links or folders (optional)</label>
     <div id="todo-modal-links"></div>
     <button type="button" class="text-btn add-link-btn" onclick="addLinkRow({}, true)"><span class="msym" style="font-size:16px">add</span> Add another link</button>
@@ -286,6 +305,7 @@
     </div>
     <dl class="keys-list">
       <dt><kbd>N</kbd></dt><dd>New task</dd>
+      <dt><kbd>Q</kbd></dt><dd>Quick add</dd>
       <dt><kbd>/</kbd></dt><dd>Search tasks</dd>
       <dt><kbd>T</kbd></dt><dd>Today</dd>
       <dt><kbd>M</kbd></dt><dd>Month view</dd>
@@ -397,6 +417,50 @@
           <option value="2880">2 days before</option>
         </select>
       </div>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-dltitle">Deadline event title
+        <span class="settings-hint">What the calendar event is called. {task} is the task, {course} the course. Now: <b id="settings-dltitle-preview"></b></span>
+      </label>
+      <input class="todo-input settings-text settings-wide" id="settings-dltitle" type="text" maxlength="80"
+             placeholder="Deadline: {task}" oninput="previewDeadlineTitle()" onchange="settingsChanged()">
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-dllength">Deadline event look
+        <span class="settings-hint">How long the event is, and its colour on the calendar.</span>
+      </label>
+      <div class="settings-pair">
+        <select class="task-sort" id="settings-dllength" onchange="settingsChanged()">
+          <option value="15">15 min</option>
+          <option value="30">30 min</option>
+          <option value="60">1 hour</option>
+          <option value="120">2 hours</option>
+          <option value="allday">All day</option>
+        </select>
+        <select class="task-sort" id="settings-dlcolor" onchange="settingsChanged()">
+          <option value="">Calendar's colour</option>
+          <option value="1">Lavender</option>
+          <option value="2">Sage</option>
+          <option value="3">Grape</option>
+          <option value="4">Flamingo</option>
+          <option value="5">Banana</option>
+          <option value="6">Tangerine</option>
+          <option value="7">Peacock</option>
+          <option value="8">Graphite</option>
+          <option value="9">Blueberry</option>
+          <option value="10">Basil</option>
+          <option value="11">Tomato</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-dldetails">Deadline event details
+        <span class="settings-hint">Put the task's notes and links in the event, so they are there on your phone too.</span>
+      </label>
+      <input class="settings-check" id="settings-dldetails" type="checkbox" onchange="settingsChanged()">
     </div>
 
     <h3 class="settings-section">Calendar</h3>
@@ -539,6 +603,7 @@
   </div>
 </div>
 
+<script src="quickadd.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

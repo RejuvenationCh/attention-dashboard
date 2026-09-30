@@ -637,25 +637,46 @@ function writeTarget() {
   return acct && calId ? { acct, calId } : { acct: googleAccounts()[0], calId: WRITE_CAL };
 }
 
-// Deadline events are half-hour blocks; 23:45 would otherwise spill into the next day.
-function plusHalfHour(hhmm) {
+// End of a timed deadline event; capped at 23:59 so it never spills into the next day.
+function plusMinutes(hhmm, mins) {
   const [h, m] = hhmm.split(':').map(Number);
-  const t = Math.min(h * 60 + m + 30, 23 * 60 + 59);
+  const t = Math.min(h * 60 + m + mins, 23 * 60 + 59);
   return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
+const plusHalfHour = hhmm => plusMinutes(hhmm, 30);
+const plusDays = (ymd, n) => { const d = new Date(ymd + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
+
+// The event title, from Settings → Deadline events. `title` is what the title always was ("Course:
+// task" for course work); a template that names {course} gets the task and course separately.
+// A placeholder with nothing to fill it takes its separator with it: no "Deadline: : Essay".
+function deadlineEventTitle(title, { task, course } = {}) {
+  const tpl = (_settings.deadlineTitle || '').trim() || SETTINGS_DEFAULTS.deadlineTitle;
+  const split = tpl.includes('{course}');
+  const out = tpl.replaceAll('{task}', split ? (task ?? title) : title).replaceAll('{course}', split ? (course || '') : '');
+  return out.replace(/\(\s*\)|\[\s*\]/g, '').replace(/\s+/g, ' ').replace(/^[\s:·|–-]+|[\s:·|–-]+$/g, '').replace(/([:·|–-])\s*([:·|–-])/g, '$2').trim() || title;
 }
 
 // `time` is the deadline's own due time when it has one (eLearn gives "…is due 00:59"); only a
-// task with a bare date falls back to the hour set in Settings.
-async function createDeadlineEvent(title, deadline, time = _settings.deadlineTime) {
+// task with a bare date falls back to the hour set in Settings. `extra` shapes the event from
+// Settings: the task and course for the title template, and notes and links for the description.
+async function createDeadlineEvent(title, deadline, time = _settings.deadlineTime, extra = {}) {
   const { acct, calId } = writeTarget();
   if (!acct) throw new Error('No Google account connected');
+  const len = _settings.deadlineLength;
+  const when = len === 'allday'
+    ? { start: { date: deadline }, end: { date: plusDays(deadline, 1) } }
+    : { start: { dateTime: `${deadline}T${time}:00`, timeZone: TZ },
+        end:   { dateTime: `${deadline}T${plusMinutes(time, Number(len) || 30)}:00`, timeZone: TZ } };
+  const details = _settings.deadlineDetails
+    ? [extra.notes, ...linksOf({ link: extra.link }).map(l => l.url)].filter(Boolean).join('\n\n') : '';
   const res = await gcal(`/calendars/${encodeURIComponent(calId)}/events?sendUpdates=none`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      summary: `Deadline: ${title}`,
-      start: { dateTime: `${deadline}T${time}:00`, timeZone: TZ },
-      end:   { dateTime: `${deadline}T${plusHalfHour(time)}:00`, timeZone: TZ },
+      summary: deadlineEventTitle(title, extra),
+      ...when,
+      ...(_settings.deadlineColor ? { colorId: _settings.deadlineColor } : {}),
+      ...(details ? { description: details } : {}),
       reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: _settings.deadlineWarn }] },
     }),
   }, acct);
@@ -1643,6 +1664,10 @@ const SETTINGS_DEFAULTS = {
   newTaskRepeat: '',
   deadlineTime: '09:00',   // when a deadline reminder sits on the calendar
   deadlineWarn: 1440,      // minutes before that Google pops its reminder
+  deadlineTitle: 'Deadline: {task}',   // {task}; {course} for the course on its own
+  deadlineLength: '30',    // minutes as a string, or 'allday'
+  deadlineColor: '',       // '' = the calendar's own colour, '1'..'11' = Google's event colours
+  deadlineDetails: true,   // put the task's notes and links in the event
   weekStartsOn: 1,      // 0 = Sunday, 1 = Monday
 };
 let _settings = { ...SETTINGS_DEFAULTS };
@@ -1688,6 +1713,11 @@ function paintSettings() {
   }).join('');
   dt.value = _settings.deadlineTime;
   document.getElementById('settings-deadlinewarn').value = String(_settings.deadlineWarn);
+  document.getElementById('settings-dltitle').value = _settings.deadlineTitle;
+  document.getElementById('settings-dllength').value = String(_settings.deadlineLength);
+  document.getElementById('settings-dlcolor').value = _settings.deadlineColor;
+  document.getElementById('settings-dldetails').checked = _settings.deadlineDetails;
+  previewDeadlineTitle();
   document.getElementById('settings-newcal').checked = _settings.newTaskCal;
   document.getElementById('settings-newdeadline').value = _settings.newTaskDeadline;
   document.getElementById('settings-newrepeat').value = _settings.newTaskRepeat;
@@ -1699,6 +1729,15 @@ function paintSettings() {
 
 // Read every control back, validate, persist. A field that will not parse keeps its previous
 // value rather than becoming NaN: a half-typed number should not quietly wreck a setting.
+// What the title template makes of an example, for both a task and a course deadline.
+function previewDeadlineTitle() {
+  const tpl = document.getElementById('settings-dltitle').value;
+  const was = _settings.deadlineTitle;
+  _settings.deadlineTitle = tpl;
+  document.getElementById('settings-dltitle-preview').textContent =
+    `${deadlineEventTitle('Essay')} · ${deadlineEventTitle('Calculus A: Quiz 2', { task: 'Quiz 2', course: 'Calculus A' })}`;
+  _settings.deadlineTitle = was;
+}
 function settingsChanged() {
   const num = (id, lo, hi, fallback) => {
     const v = Math.round(Number(document.getElementById(id).value));
@@ -1727,6 +1766,10 @@ function settingsChanged() {
     nowLineAlpha: num('settings-nowline', 0, 40, _settings.nowLineAlpha * 100) / 100,
     deadlineTime: document.getElementById('settings-deadlinetime').value || _settings.deadlineTime,
     deadlineWarn: Number(document.getElementById('settings-deadlinewarn').value),
+    deadlineTitle: document.getElementById('settings-dltitle').value.trim() || SETTINGS_DEFAULTS.deadlineTitle,
+    deadlineLength: document.getElementById('settings-dllength').value,
+    deadlineColor: document.getElementById('settings-dlcolor').value,
+    deadlineDetails: document.getElementById('settings-dldetails').checked,
     newTaskCal: document.getElementById('settings-newcal').checked,
     newTaskDeadline: document.getElementById('settings-newdeadline').value,
     newTaskRepeat: document.getElementById('settings-newrepeat').value,
@@ -1776,7 +1819,7 @@ function applySettings() {
 // localStorage beside the other display preferences. The three fields that do belong to the
 // task itself (doneAt, priority, snoozeUntil) go to SQLite.
 const TASK_VIEW_KEY = 'attention-task-view-v1';
-let _taskView = { q: '', sort: _settings.defaultSort, showDone: false };
+let _taskView = { q: '', sort: _settings.defaultSort, tab: 'todo', tag: '' };
 try { _taskView = { ..._taskView, ...(JSON.parse(localStorage.getItem(TASK_VIEW_KEY)) || {}) }; } catch {}
 const saveTaskView = () => localStorage.setItem(TASK_VIEW_KEY, JSON.stringify(_taskView));
 
@@ -1826,7 +1869,51 @@ function togglePriority(id) {
 
 const shortTitle = (s, n = 28) => (s.length > n ? s.slice(0, n) + '…' : s);
 
-function toggleDoneSection() { _taskView.showDone = !_taskView.showDone; saveTaskView(); renderTodos(); }
+// To do / Done. Finished tasks get their own tab instead of a section under the open ones.
+function setTaskTab(tab) { _taskView.tab = tab; saveTaskView(); renderTodos(); }
+function setTaskTag(tag) { _taskView.tag = _taskView.tag === tag ? '' : tag; saveTaskView(); renderTodos(); }
+
+// Steps: shown folded as "2/5 steps" on the row; which rows are unfolded is not worth saving.
+const _openSteps = new Set();
+function toggleStepsOpen(id) { _openSteps.has(id) ? _openSteps.delete(id) : _openSteps.add(id); renderTodos(); }
+function toggleStep(id, i) {
+  const todos = getTodos();
+  const t = todos.find(x => x.id === id);
+  if (!t?.subtasks?.[i]) return;
+  t.subtasks[i].done = !t.subtasks[i].done;
+  putTodos(todos);
+  renderTodos();
+}
+
+// Quick add (quickadd.js does the reading). Uses the same calendar default as the New Task window.
+function previewQuickAdd(v) {
+  const el = document.getElementById('quick-add-preview');
+  const q = v.trim() ? parseQuickAdd(v) : null;
+  if (!q || (!q.deadline && !q.time && !q.tags.length && !q.priority && !q.repeat)) { el.textContent = ''; return; }
+  el.textContent = '→ ' + [q.title || '(no title yet)', q.deadline && whenLabel(q.deadline), q.time,
+    q.repeat && (q.repeat === 'weekly' ? 'every week' : 'every month'), ...q.tags.map(t => '#' + t),
+    q.priority && 'priority'].filter(Boolean).join(' · ');
+}
+async function quickAdd(input) {
+  const q = parseQuickAdd(input.value);
+  if (!q.title) { showToast('Type what the task is, then Enter.', null, 4); return; }
+  const todo = { id: Date.now().toString(), title: q.title, deadline: q.deadline, tags: q.tags,
+                 priority: q.priority, repeat: q.repeat, subtasks: [], done: false };
+  input.value = '';
+  previewQuickAdd('');
+  if (q.deadline && _settings.newTaskCal && googleAccounts().length) {
+    try {
+      const ev = await createDeadlineEvent(q.title, q.deadline, q.time || _settings.deadlineTime, { task: q.title });
+      Object.assign(todo, { calEventId: ev.id, calAcct: ev.acct, calId: ev.calId });
+    } catch (e) { showToast(`Task added, but the calendar reminder failed: ${e.message}`, null, 7); }
+  }
+  const todos = getTodos();
+  todos.push(todo);
+  putTodos(todos);
+  if (_taskView.tab !== 'todo') _taskView.tab = 'todo';
+  renderTodos();
+  showToast(`Added "${shortTitle(q.title)}"${q.deadline ? `, due ${whenLabel(q.deadline)}` : ''}`, () => removeTodo(todo.id), 6);
+}
 
 let _clearTimer = null;
 
@@ -1876,8 +1963,25 @@ function renderTodos() {
   document.getElementById('todo-count').textContent = open.length;
   renderDueStrip(open);
 
+  const onDone = _taskView.tab === 'done';
+  document.getElementById('tab-todo').classList.toggle('active', !onDone);
+  document.getElementById('tab-done').classList.toggle('active', onDone);
+  document.getElementById('tab-done').textContent = done.length ? `Done ${done.length}` : 'Done';
+  document.getElementById('quick-add-wrap').hidden = onDone;
+  document.getElementById('todo-sort').hidden = onDone;
+
+  // Tag filter: the tags used in the tab being looked at.
+  const tagsHere = [...new Set((onDone ? done : [...open, ...snoozed]).flatMap(t => t.tags || []))].sort((a, b) => a.localeCompare(b));
+  if (_taskView.tag && !tagsHere.includes(_taskView.tag)) _taskView.tag = '';
+  const pills = document.getElementById('todo-tags');
+  pills.hidden = !tagsHere.length;
+  pills.innerHTML = ['', ...tagsHere].map(t =>
+    `<button class="type-pill${t === _taskView.tag ? ' on' : ''}" onclick="setTaskTag('${escape(t)}')">${t ? '#' + escape(t) : 'All'}</button>`).join('');
+
   const q = _taskView.q.trim().toLowerCase();
-  const hit = t => !q || t.title.toLowerCase().includes(q) || (t.desc || '').toLowerCase().includes(q);
+  const hit = t => (!_taskView.tag || (t.tags || []).includes(_taskView.tag)) && (!q
+    || t.title.toLowerCase().includes(q) || (t.desc || '').toLowerCase().includes(q)
+    || (t.tags || []).some(g => g.toLowerCase().includes(q.replace(/^#/, ''))));
   const shown = sortTodos(open.filter(hit));
 
   // One chip per link. With several, "Open link" three times says nothing, so each is named by
@@ -1906,8 +2010,19 @@ function renderTodos() {
     const course = t.courseEventId && _deadlines.find(e => e.id === t.courseEventId);
     const rep = t.repeat ? ` · <span class="repeat-tag"><span class="msym">repeat</span>${t.repeat === 'monthly' ? 'monthly' : 'weekly'}</span>` : '';
     return `${base}${rep}${t.calEventId?` · <span class="cal-tag">on calendar</span>`:''}${course
-      ? ` · <span class="course-tag"><span class="cal-swatch" style="background:${evColor(course)}"></span>${escape(course._calName || '')}</span>` : ''}`;
+      ? ` · <span class="course-tag"><span class="cal-swatch" style="background:${evColor(course)}"></span>${escape(course._calName || '')}</span>` : ''}${stepsTag(t)}${tagChips(t)}`;
   };
+  const tagChips = t => (t.tags || []).map(g => ` <button class="task-tag" onclick="setTaskTag('${escape(g)}')">#${escape(g)}</button>`).join('');
+  const stepsTag = t => {
+    const list = t.subtasks || [];
+    if (!list.length) return '';
+    const n = list.filter(s => s.done).length;
+    return ` · <button class="steps-tag${n === list.length ? ' all' : ''}" onclick="toggleStepsOpen('${t.id}')">${n}/${list.length} steps</button>`;
+  };
+  const stepsList = t => !(t.subtasks || []).length || !_openSteps.has(t.id) ? '' : `
+    <div class="task-steps">${t.subtasks.map((s, i) => `
+      <label class="task-step${s.done ? ' done' : ''}"><input type="checkbox" ${s.done ? 'checked' : ''} onchange="toggleStep('${t.id}', ${i})"> ${escape(s.text)}</label>`).join('')}
+    </div>`;
 
   // Manual order is the only order you can rearrange; dragging inside a sorted or filtered list
   // would move rows that are not next to each other in the stored list.
@@ -1922,6 +2037,7 @@ function renderTodos() {
       <div class="task-main">
         <div class="task-title">${escape(t.title)}</div>
         <div class="task-meta">${metaFor(t, overdue)}</div>
+        ${stepsList(t)}
         ${t.desc?`<div class="task-desc">${escape(t.desc)}</div>`:''}
         ${linkHtml(t)}
       </div>
@@ -1960,7 +2076,7 @@ function renderTodos() {
       <button class="task-check checked" onclick="toggleTodoDone('${t.id}')" title="Reopen"></button>
       <div class="task-main">
         <div class="task-title">${escape(t.title)}</div>
-        <div class="task-meta">Completed ${doneAgo(t.doneAt)}</div>
+        <div class="task-meta">Completed ${doneAgo(t.doneAt)}${(t.subtasks || []).length ? ` · ${t.subtasks.length} steps` : ''}${tagChips(t)}</div>
       </div>
       <div class="task-actions">
         <button onclick="removeTodo('${t.id}')" title="Delete"><span class="msym">close</span></button>
@@ -1968,6 +2084,10 @@ function renderTodos() {
     </div>`;
 
   const parts = [];
+  if (onDone) {
+    document.getElementById('todo-list').innerHTML = doneView(done.filter(hit), doneItem, done.length);
+    return;
+  }
   if (shown.length) {
     parts.push(`<div class="task-list">${shown.map(item).join('')}</div>`);
   } else if (q) {
@@ -1982,18 +2102,26 @@ function renderTodos() {
       <div class="task-list">${snoozed.map(snoozedItem).join('')}</div>`);
   }
 
-  if (done.length) {
-    parts.push(`
-      <div class="task-sub task-sub-toggle" onclick="toggleDoneSection()">
-        <span class="msym">${_taskView.showDone ? 'expand_less' : 'expand_more'}</span>
-        Completed <span class="count-chip neutral">${done.length}</span>
-        ${_taskView.showDone ? `<button class="text-btn" onclick="event.stopPropagation();clearCompleted()">Clear</button>` : ''}
-      </div>
-      ${_taskView.showDone ? `<div class="task-list done-list">${done.map(doneItem).join('')}</div>` : ''}`);
-  }
-
   document.getElementById('todo-list').innerHTML = parts.join('');
   if (_deadlines.length) drawDeadlineRows();
+}
+
+// The Done tab: newest first, grouped by when they were finished, with a count for the week.
+function doneView(list, row, total) {
+  if (!total) return '<div class="empty">Nothing finished yet. Ticked-off tasks land here.</div>';
+  if (!list.length) return '<div class="empty">Nothing matches.</div>';
+  const age = t => Math.floor((new Date(getDateKey(0) + 'T00:00:00') - new Date(new Date(t.doneAt).toLocaleDateString('en-CA') + 'T00:00:00')) / 86400000);
+  const groups = [['Today', a => a <= 0], ['Yesterday', a => a === 1], ['This week', a => a < 7],
+                  ['Last week', a => a < 14], ['Earlier', () => true]];
+  const sorted = list.slice().sort((a, b) => b.doneAt.localeCompare(a.doneAt));
+  const buckets = groups.map(([name]) => [name, []]);
+  for (const t of sorted) buckets[groups.findIndex(([, fits]) => fits(age(t)))][1].push(t);
+  const week = sorted.filter(t => age(t) < 7).length;
+  return `<div class="done-summary">${week} finished in the last 7 days
+      <button class="text-btn" onclick="clearCompleted()">Clear all</button></div>`
+    + buckets.filter(([, items]) => items.length).map(([name, items]) =>
+      `<div class="task-sub">${name} <span class="count-chip neutral">${items.length}</span></div>
+       <div class="task-list done-list">${items.map(row).join('')}</div>`).join('');
 }
 
 // The one alert that works with no permission and no setup. The reminders below can only
@@ -2058,6 +2186,8 @@ function deadlineOnCalendar(e) {
   // course name, so those count as duplicates too.
   const titles = [deadlineEventName(e), e.summary || 'Course deadline', e._calName ? `${e._calName} \u2014 ${e.summary || 'Course deadline'}` : null].filter(Boolean);
   const want = titles.flatMap(t => [`Deadline: ${t}`, `\u{1F4CC} Deadline: ${t}`]);
+  // And whatever the title template in Settings makes of it now.
+  want.push(deadlineEventTitle(deadlineEventName(e), { task: e.summary || 'Course deadline', course: e._calName }));
   return _upcoming.some(g => !String(g.id).startsWith('moodle-')
     && (g.start?.dateTime || g.start?.date || '').slice(0, 10) === ymd
     && want.includes(g.summary || ''));
@@ -2172,7 +2302,8 @@ async function addDeadlineToCalendar(i) {
   const name = deadlineEventName(e);
   const short = name.length > 28 ? name.slice(0, 28) + '…' : name;
   try {
-    const { id, acct, calId } = await createDeadlineEvent(name, ymd, deadlineHhmm(e) || _settings.deadlineTime);
+    const { id, acct, calId } = await createDeadlineEvent(name, ymd, deadlineHhmm(e) || _settings.deadlineTime,
+      { task: e.summary || 'Course deadline', course: e._calName, link: e.htmlLink });
     addedDeadlines.add(e.id);
     rememberAdded();
     drawDeadlineRows();
@@ -2280,10 +2411,12 @@ function toggleTodoDone(id) {
     const was = t.deadline;
     t.deadline = nextRepeat(t.deadline, t.repeat);
     t.snoozeUntil = null;
+    const steps = t.subtasks;
+    t.subtasks = (steps || []).map(s => ({ ...s, done: false }));   // the next round starts fresh
     putTodos(todos);
     renderTodos();
     showToast(`"${shortTitle(t.title)}" done. Next one on ${whenLabel(t.deadline)}`,
-      () => { t.deadline = was; putTodos(getTodos()); renderTodos(); hideToast(); }, 6);
+      () => { t.deadline = was; t.subtasks = steps; putTodos(getTodos()); renderTodos(); hideToast(); }, 6);
     return;
   }
   const wasDone = !!t.doneAt;
@@ -2372,8 +2505,31 @@ function hideToast() {
 let _saving = false;
 let _editingId = null;
 
-function _openModal(heading, saveLabel, title='', desc='', link='', deadline='', calChecked=false, courseEventId=null, repeat='') {
+// Steps being edited in the task window; saved with the task.
+let _modalSteps = [];
+function paintModalSteps() {
+  document.getElementById('todo-modal-steps').innerHTML = _modalSteps.map((s, i) => `
+    <div class="step-row">
+      <input type="checkbox" ${s.done ? 'checked' : ''} onchange="_modalSteps[${i}].done = this.checked">
+      <input class="todo-input step-text" value="${escape(s.text)}" oninput="_modalSteps[${i}].text = this.value">
+      <button type="button" class="icon-btn" onclick="_modalSteps.splice(${i}, 1); paintModalSteps()" title="Remove step"><span class="msym">close</span></button>
+    </div>`).join('');
+}
+function addModalStep(text) {
+  if (!text.trim()) return;
+  _modalSteps.push({ text: text.trim(), done: false });
+  paintModalSteps();
+}
+const allTags = () => [...new Set(getTodos().flatMap(t => t.tags || []))].sort((a, b) => a.localeCompare(b));
+const parseTags = v => [...new Set(v.split(/[,\s]+/).map(t => t.replace(/^#/, '').trim()).filter(Boolean))];
+
+function _openModal(heading, saveLabel, title='', desc='', link='', deadline='', calChecked=false, courseEventId=null, repeat='', tags=[], steps=[]) {
   _saving = false;
+  _modalSteps = steps.map(s => ({ ...s }));
+  paintModalSteps();
+  document.getElementById('todo-modal-step').value = '';
+  document.getElementById('todo-modal-tags').value = tags.join(', ');
+  document.getElementById('todo-tag-list').innerHTML = allTags().map(t => `<option value="${escape(t)}">`).join('');
   document.getElementById('todo-modal-heading').textContent  = heading;
   document.getElementById('todo-modal-title').value          = title;
   document.getElementById('todo-modal-desc').value           = desc || '';
@@ -2450,7 +2606,7 @@ function openEditModal(id) {
   const t = getTodos().find(x => x.id === id);
   if (!t) return;
   _editingId = id;
-  _openModal('Edit Task', 'Update Task', t.title, t.desc, t.link, t.deadline, !!t.calEventId, t.courseEventId, t.repeat);
+  _openModal('Edit Task', 'Update Task', t.title, t.desc, t.link, t.deadline, !!t.calEventId, t.courseEventId, t.repeat, t.tags || [], t.subtasks || []);
 }
 
 function closeTodoModal() {
@@ -2465,6 +2621,7 @@ function calendarTitleFor(title, courseEventId) {
   const course = courseOf(courseEventId);
   return course?._calName ? `${course._calName}: ${title}` : title;
 }
+const eventExtra = (title, courseEventId, notes, link) => ({ task: title, course: courseOf(courseEventId)?._calName, notes, link });
 const calendarTimeFor = courseEventId =>
   deadlineHhmm(courseOf(courseEventId) || {}) || _settings.deadlineTime;
 
@@ -2477,6 +2634,10 @@ async function saveTodo() {
   const deadline = parsed || null;
   const courseEventId = document.getElementById('todo-modal-course').value || null;
   const repeat = document.getElementById('todo-modal-repeat').value || null;
+  const tags = parseTags(document.getElementById('todo-modal-tags').value);
+  const pending = document.getElementById('todo-modal-step').value.trim();   // typed but not Entered
+  const subtasks = [..._modalSteps, ...(pending ? [{ text: pending, done: false }] : [])]
+    .map(s => ({ text: s.text.trim(), done: !!s.done })).filter(s => s.text);
   const addCal   = document.getElementById('todo-modal-cal').checked && !!deadline;
   const errEl    = document.getElementById('todo-modal-err');
   const btn      = document.getElementById('todo-save-btn');
@@ -2499,10 +2660,12 @@ async function saveTodo() {
       t.deadline = deadline;
       t.courseEventId = courseEventId;
       t.repeat = repeat;
+      t.tags = tags;
+      t.subtasks = subtasks;
       // If cal was checked but no event yet, create one
       if (addCal && !t.calEventId && deadline) {
         try {
-          const ev = await createDeadlineEvent(calendarTitleFor(title, courseEventId), deadline, calendarTimeFor(courseEventId));
+          const ev = await createDeadlineEvent(calendarTitleFor(title, courseEventId), deadline, calendarTimeFor(courseEventId), eventExtra(title, courseEventId, desc, link));
           t.calEventId = ev.id;
           t.calAcct = ev.acct;
           t.calId = ev.calId;
@@ -2519,14 +2682,14 @@ async function saveTodo() {
   let calEventId = null, calAcct = null, calId = null;
   if (addCal) {
     try {
-      const ev = await createDeadlineEvent(calendarTitleFor(title, courseEventId), deadline, calendarTimeFor(courseEventId));
+      const ev = await createDeadlineEvent(calendarTitleFor(title, courseEventId), deadline, calendarTimeFor(courseEventId), eventExtra(title, courseEventId, desc, link));
       calEventId = ev.id;
       calAcct = ev.acct;
       calId = ev.calId;
     } catch(e) { showToast(`Task saved, but the calendar reminder failed: ${e.message}`, null, 7); }
   }
 
-  todos.push({ id: Date.now().toString(), title, desc, link, deadline, calEventId, calAcct, calId, courseEventId, repeat, done: false });
+  todos.push({ id: Date.now().toString(), title, desc, link, deadline, calEventId, calAcct, calId, courseEventId, repeat, tags, subtasks, done: false });
   putTodos(todos);
   renderTodos();
   closeTodoModal();
@@ -2824,6 +2987,7 @@ document.addEventListener('keydown', e => {
   if (['todo-overlay', 'settings-overlay', 'keys-overlay'].some(open)) return;
   const act = {
     n: () => openTodoModal(),
+    q: () => { goToday(); if (_taskView.tab !== 'todo') setTaskTab('todo'); const f = document.getElementById('quick-add'); f.scrollIntoView({ block: 'center' }); f.focus(); },
     '/': () => { goToday(); const s = document.getElementById('todo-search'); s.scrollIntoView({ block: 'center' }); s.focus(); },
     t: () => goToday(),
     m: () => open('month-overlay') ? closeMonth() : openMonth(),

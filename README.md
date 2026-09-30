@@ -102,6 +102,19 @@ A course only appears once it has at least one assignment or quiz with a due dat
 The export link works like a password to your eLearn calendar. It is stored only on your
 computer and never shown again.
 
+## Tasks
+
+- **Quick add:** type one line at the top of Tasks and press Enter. For example
+  `essay due fri 5pm #school !` makes "essay", due Friday, reminder at 17:00, tagged school,
+  marked as a priority. It understands today, tomorrow, weekdays, `20/10`, `5 oct`, `in 3 days`,
+  times like `5pm` or `17:00`, `#tags`, `!` and `every week` / `every month`.
+- **Steps:** add a checklist inside a task in the task window, and tick steps from the list.
+- **Tags:** filter the list by tag with the buttons above it.
+- **Done:** finished tasks live in the **Done** tab, grouped by when you finished them.
+- **Calendar reminders:** Settings → Tasks sets what the Google Calendar event for a deadline
+  is called (`{task}` and `{course}` fill in), how long it is, its colour, and whether your notes
+  and links go in it.
+
 ## Reminders
 
 Click the **bell** in the Tasks card, next to the sort menu, to turn on reminders for tasks and

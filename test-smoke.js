@@ -52,8 +52,11 @@ const freePort = () => new Promise(ok => {
     // Task store: add, replace, read back.
     let r = await send('POST', '/api/todos', [{ title: 'Smoke A', deadline: '2026-10-20' }, { title: 'Smoke B' }]);
     assert.strictEqual(r.body.todos.length, 2);
-    r = await send('PUT', '/api/todos', [{ ...r.body.todos[0], title: 'Smoke A edited' }]);
+    r = await send('PUT', '/api/todos', [{ ...r.body.todos[0], title: 'Smoke A edited',
+      tags: ['#school', 'school', ' urgent '], subtasks: [{ text: 'Outline', done: true }, { text: '' }, { text: 'Draft' }] }]);
     assert.deepStrictEqual(r.body.todos.map(t => t.title), ['Smoke A edited']);
+    assert.deepStrictEqual(r.body.todos[0].tags, ['school', 'urgent'], 'tags cleaned and de-duplicated');
+    assert.deepStrictEqual(r.body.todos[0].subtasks, [{ text: 'Outline', done: true }, { text: 'Draft', done: false }]);
 
     // Backup and restore round trip, and a non-backup is refused.
     const backup = (await get('/api/backup')).body;

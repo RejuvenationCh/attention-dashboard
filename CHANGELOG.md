@@ -3,6 +3,20 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.7.0 (1 October 2026)
+
+- **Quick add.** Type one line at the top of Tasks, like `essay due fri 5pm #school !`, and press
+  Enter. It understands dates (today, tomorrow, fri, 20/10, 5 oct, in 3 days), times, `#tags`,
+  `!` for priority and "every week". Press Q to jump there.
+- **Done tab.** Finished tasks move to their own tab, grouped by when you finished them, with a
+  count for the week. The main list stays short.
+- **Tags.** Add tags to a task (or `#tag` in quick add) and filter the list by one.
+- **Steps.** A checklist inside a task: tick steps straight from the list. A repeating task
+  starts its steps fresh each time.
+- **Deadline events, your way.** Settings → Tasks: the title of the calendar event (with
+  `{task}` and `{course}`), its length or all day, its colour, and whether your notes and links
+  go in it.
+
 ## 1.6.0 (1 October 2026)
 
 - **Safer updates.** If a new version ever fails to start, the dashboard goes back to the

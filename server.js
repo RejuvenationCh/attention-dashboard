@@ -74,6 +74,8 @@ const ADDED_COLUMNS = {
   course_event: 'TEXT',     // Moodle event id this task was made for (Course Deadlines card)
   cal_id:       'TEXT',     // which calendar calEventId lives on; null means the account's primary
   repeat:       'TEXT',     // 'weekly' | 'monthly'; ticking it off moves the deadline on instead
+  tags:         'TEXT',     // JSON array of short labels, e.g. ["school","urgent"]
+  subtasks:     'TEXT',     // JSON array of { text, done }: a checklist inside the task
 };
 {
   const have = new Set(db.prepare('PRAGMA table_info(todos)').all().map(c => c.name));
@@ -88,7 +90,16 @@ const rowToTodo = r => ({
   deadline: r.deadline, calEventId: r.calEventId, calAcct: r.calAcct,
   doneAt: r.done_at, priority: !!r.priority, snoozeUntil: r.snooze_until,
   courseEventId: r.course_event, calId: r.cal_id, repeat: r.repeat,
+  tags: parseList(r.tags), subtasks: parseList(r.subtasks),
 });
+function parseList(v) { try { const a = JSON.parse(v); return Array.isArray(a) ? a : []; } catch { return []; } }
+
+// Stored as JSON, bounded so one runaway task cannot bloat the database.
+const cleanTags = tags => Array.isArray(tags)
+  ? [...new Set(tags.map(t => String(t).trim().replace(/^#/, '').slice(0, 30)).filter(Boolean))].slice(0, 10) : [];
+const cleanSubtasks = list => Array.isArray(list)
+  ? list.map(s => ({ text: String(s?.text ?? '').trim().slice(0, 200), done: !!s?.done })).filter(s => s.text).slice(0, 50) : [];
+const asJson = a => (a.length ? JSON.stringify(a) : null);
 
 function listTodos() {
   return db.prepare('SELECT * FROM todos ORDER BY seq').all().map(rowToTodo);
@@ -96,8 +107,8 @@ function listTodos() {
 
 const insertTodo = db.prepare(
   `INSERT INTO todos (id, title, description, link, deadline, calEventId, calAcct,
-                      done_at, priority, snooze_until, course_event, cal_id, repeat)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+                      done_at, priority, snooze_until, course_event, cal_id, repeat, tags, subtasks)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
 function normalise(t) {
   const title = String(t.title ?? '').trim();
@@ -105,7 +116,8 @@ function normalise(t) {
   return [t.id || newId(), title, t.desc ?? null, t.link ?? null,
           t.deadline ?? null, t.calEventId ?? null, t.calAcct ?? null,
           t.doneAt ?? null, t.priority ? 1 : null, t.snoozeUntil ?? null,
-          t.courseEventId ?? null, t.calId ?? null, t.repeat ?? null];
+          t.courseEventId ?? null, t.calId ?? null, t.repeat ?? null,
+          asJson(cleanTags(t.tags)), asJson(cleanSubtasks(t.subtasks))];
 }
 
 // Replace the whole list, atomically.
