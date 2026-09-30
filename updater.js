@@ -9,7 +9,7 @@ const path = require('path');
 
 const DIR = __dirname;
 const VERSION = require('./package.json').version;
-const CHECK_EVERY = 6 * 3600 * 1000;
+const CHECK_EVERY = 3600 * 1000;   // one small git fetch, so hourly costs nothing
 
 const git = (...args) => new Promise((ok, fail) =>
   execFile('git', args, { cwd: DIR, timeout: 60000 }, (err, out) => err ? fail(err) : ok(out.trim())));
@@ -46,20 +46,28 @@ async function check() {
   }
 }
 
-// restart: how this OS brings the server back (platform.restart).
-function start(config, restart) {
-  if (config.autoUpdate === false) return;
-  status.enabled = true;
-  const run = async () => {
-    const tag = await check();
-    if (tag) { console.log(`[update] v${VERSION} → ${tag}, restarting`); restart(); }
-    else if (status.error) console.error('[update]', status.error);
-  };
-  setTimeout(run, 60000).unref();   // not during boot: the page is loading then
-  setInterval(run, CHECK_EVERY).unref();
+let restartFn = () => process.exit(1);
+
+// One check. When it moves to a new tag the server restarts shortly after, which is left to
+// the caller's timing so the page can be told first. Returns the tag, or null.
+async function checkNow() {
+  const tag = await check();
+  if (tag) { console.log(`[update] v${VERSION} → ${tag}, restarting`); setTimeout(restartFn, 500); }
+  else if (status.error) console.error('[update]', status.error);
+  return tag;
 }
 
-module.exports = { start, status, newer, VERSION };
+// restart: how this OS brings the server back (platform.restart). "Check for updates" in
+// Settings works even with autoUpdate off; only the timer is switched off.
+function start(config, restart) {
+  restartFn = restart;
+  if (config.autoUpdate === false) return;
+  status.enabled = true;
+  setTimeout(checkNow, 60000).unref();   // not during boot: the page is loading then
+  setInterval(checkNow, CHECK_EVERY).unref();
+}
+
+module.exports = { start, checkNow, status, newer, VERSION };
 
 if (require.main === module) {   // node updater.js: self-check of the version compare
   const assert = require('assert');

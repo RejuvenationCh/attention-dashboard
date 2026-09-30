@@ -84,16 +84,21 @@ $id = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershe
   });
 }
 
-// Come back up after an update. The macOS LaunchAgent has KeepAlive, so exiting is enough.
-// Windows' scheduled task does not restart a clean exit, so start the new server first; it
-// retries its port until this one has let go (see listen in server.js).
+// Come back up after an update. The macOS LaunchAgent restarts the server only when it exits
+// with an error (KeepAlive SuccessfulExit=false), so exit 1 asks for a restart and exit 0,
+// from stop(), stays down. Windows' scheduled task never restarts it, so start the new server
+// first; it retries its port until this one has let go (see listen in server.js).
 function restart() {
   if (OS === 'windows') {
     const log = fs.openSync(path.join(__dirname, 'dashboard.log'), 'a');
     spawn(process.execPath, process.argv.slice(1), { cwd: __dirname, detached: true, stdio: ['ignore', log, log], windowsHide: true }).unref();
+    process.exit(0);
   }
-  process.exit(0);
+  process.exit(1);
 }
+
+// "Stop dashboard" in Settings: down until the next login, or start.command / start.cmd.
+function stop() { process.exit(0); }
 
 // Shown in toasts so the hint matches the OS that is actually delivering the banner.
 const notifyHint = OS === 'mac' ? 'No banner? Allow "Script Editor" in System Settings → Notifications.'
@@ -101,4 +106,4 @@ const notifyHint = OS === 'mac' ? 'No banner? Allow "Script Editor" in System Se
 
 const capabilities = { os: OS, canReveal: true, canPickFolder: OS !== 'other', canNotify: OS !== 'other', notifyHint };
 
-module.exports = { OS, reveal, pickFolder, notify, restart, capabilities };
+module.exports = { OS, reveal, pickFolder, notify, restart, stop, capabilities };

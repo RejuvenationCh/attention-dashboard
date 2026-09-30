@@ -25,7 +25,7 @@ cat > "$PLIST" <<PL
   <key>ProgramArguments</key><array><string>$NODE</string><string>server.js</string></array>
   <key>WorkingDirectory</key><string>$DIR</string>
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>StandardOutPath</key><string>$DIR/dashboard.log</string>
   <key>StandardErrorPath</key><string>$DIR/dashboard.log</string>
 </dict>

@@ -525,6 +525,23 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Settings: "Check for updates" and "Stop dashboard". Both end this process, so they are
+  // fenced like the other endpoints that act on the machine.
+  if ((p === '/api/update' || p === '/api/stop') && req.method === 'POST') {
+    if (badOrigin(req)) return json(res, 403, { error: 'bad origin' });
+    if (!(req.headers['content-type'] || '').includes('application/json')) {
+      return json(res, 415, { error: 'expected application/json' });
+    }
+    for await (const _ of req) { /* drain */ }
+    if (p === '/api/stop') {
+      json(res, 200, { ok: true });
+      console.log('[stop] stopped from Settings');
+      return setTimeout(platform.stop, 300);
+    }
+    const tag = await updater.checkNow();
+    return json(res, 200, { ...updater.status, updatingTo: tag && tag.replace(/^v/, '') });
+  }
+
   // What this OS can do, so the page hides buttons that would only fail.
   if (p === '/api/platform' && req.method === 'GET') return json(res, 200, platform.capabilities);
 

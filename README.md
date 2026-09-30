@@ -105,8 +105,15 @@ deadlines. **Settings → Remind me** sets how many days ahead.
 
 ## Updates
 
-The dashboard updates itself: it checks for a new version every few hours and restarts into
-it. Your tasks, sign-ins and settings are kept. **Settings** shows the version you have.
+The dashboard updates itself: it checks for a new version every hour and restarts into it.
+Your tasks, sign-ins and settings are kept. **Settings** shows the version you have, and
+**Check for updates** there gets a new version straight away.
+
+## Stopping and starting
+
+**Settings → Stop dashboard** shuts it down until the next time you log in. To start it again
+sooner, double-click **start.command** (macOS) or **start.cmd** (Windows) in the
+`attention-dashboard` folder.
 
 ## Your data
 

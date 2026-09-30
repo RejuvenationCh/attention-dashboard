@@ -318,6 +318,44 @@ async function saveProfile(change) {
   paintProfile();
   if ('moodleUrl' in change) restoreAccounts();   // the eLearn calendars appear or vanish
 }
+// Settings: check now instead of waiting for the hourly check. An update restarts the server,
+// so wait for the new version to answer, then reload the page onto it.
+async function checkForUpdates() {
+  const btn = document.getElementById('update-btn');
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  try {
+    const r = await api('/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    if (r.updatingTo) {
+      showToast(`Updating to version ${r.updatingTo}. The page reloads when it is ready.`, null, 30);
+      for (let i = 0; i < 60; i++) {
+        await new Promise(ok => setTimeout(ok, 1000));
+        const c = await api('/api/config').catch(() => null);
+        if (c?.update?.version === r.updatingTo) { location.reload(); return; }
+      }
+      showToast('The update is taking a while. Reload the page in a minute.', null, 8);
+    } else {
+      showToast(r.error ? `Could not update: ${r.error}` : `You have the latest version (${r.version})`, null, 6);
+    }
+  } catch (err) {
+    showToast(`Could not check for updates: ${err.message}`, null, 6);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Check for updates';
+  }
+}
+
+async function stopDashboard() {
+  if (!confirm('Stop the dashboard? It starts again the next time you log in, or when you open the start file in its folder.')) return;
+  try {
+    await api('/api/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  } catch (err) { showToast(`Could not stop it: ${err.message}`, null, 6); return; }
+  const start = _platform.os === 'windows' ? 'start.cmd' : 'start.command';
+  document.body.innerHTML = `<div class="stopped-page"><h1>Dashboard stopped</h1>
+    <p>It starts again the next time you log in. To start it now, double-click <b>${start}</b>
+    in the attention-dashboard folder.</p></div>`;
+}
+
 function paintProfile() {
   document.getElementById('settings-name').value = _profile.name;
   const m = document.getElementById('settings-moodle');
