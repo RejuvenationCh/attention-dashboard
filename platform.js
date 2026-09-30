@@ -1,5 +1,5 @@
 // The only OS-specific code in the app. macOS is the tested path; the Windows branches
-// follow windows-port/plan.md and are unverified until someone runs them on Windows.
+// are unverified until someone runs them on Windows.
 // Everything goes through execFile with argv, never a shell, so no path or title is parsed.
 // PowerShell scripts go in as -EncodedCommand (base64 UTF-16), which sidesteps Windows'
 // command-line quoting entirely, and print UTF-8 so non-English folder names survive.
