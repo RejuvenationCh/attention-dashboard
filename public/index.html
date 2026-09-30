@@ -276,6 +276,26 @@
   </div>
 </div>
 
+<!-- Keyboard shortcuts, opened with ? -->
+<div class="todo-overlay" id="keys-overlay" onclick="if(event.target===this) this.classList.remove('open')">
+  <div class="todo-modal keys-modal">
+    <div class="todo-modal-head">
+      <span class="todo-modal-heading">Keyboard shortcuts</span>
+      <button class="icon-btn" onclick="document.getElementById('keys-overlay').classList.remove('open')"><span class="msym">close</span></button>
+    </div>
+    <dl class="keys-list">
+      <dt><kbd>N</kbd></dt><dd>New task</dd>
+      <dt><kbd>/</kbd></dt><dd>Search tasks</dd>
+      <dt><kbd>T</kbd></dt><dd>Today</dd>
+      <dt><kbd>M</kbd></dt><dd>Month view</dd>
+      <dt><kbd>,</kbd></dt><dd>Settings</dd>
+      <dt><kbd>R</kbd></dt><dd>Refresh</dd>
+      <dt><kbd>?</kbd></dt><dd>This list</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Close whatever is open</dd>
+    </dl>
+  </div>
+</div>
+
 <!-- Settings: every knob the dashboard exposes, applied as you change it -->
 <div class="todo-overlay" id="settings-overlay" onclick="if(event.target===this) closeSettings()">
   <div class="todo-modal settings-modal">
@@ -506,6 +526,7 @@
       <button class="text-btn" id="update-btn" onclick="checkForUpdates()">Check for updates</button>
       <button class="text-btn update-install" id="install-btn" onclick="installUpdate()" hidden></button>
       <button class="text-btn" onclick="stopDashboard()">Stop dashboard</button>
+      <button class="text-btn" onclick="closeSettings(); document.getElementById('keys-overlay').classList.add('open')">Keyboard shortcuts</button>
     </div>
 
     <div class="todo-btn-row">

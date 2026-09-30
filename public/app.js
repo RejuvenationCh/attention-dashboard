@@ -2718,6 +2718,39 @@ function removeDayReminder(id) {
   renderDayStrip();
 }
 
+// Keyboard shortcuts (? lists them). Off while typing in a field, so N and / stay letters;
+// Esc works everywhere and closes the topmost thing that is open.
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const open = id => document.getElementById(id).classList.contains('open');
+  const close = id => document.getElementById(id).classList.remove('open');
+  if (e.key === 'Escape') {
+    if (open('keys-overlay')) close('keys-overlay');
+    else if (open('todo-overlay')) closeTodoModal();
+    else if (open('settings-overlay')) closeSettings();
+    else if (open('month-overlay')) closeMonth();
+    else if (open('notif-panel')) toggleNotifs();
+    else return;
+    e.preventDefault();
+    return;
+  }
+  const t = e.target;
+  if (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return;
+  if (['todo-overlay', 'settings-overlay', 'keys-overlay'].some(open)) return;
+  const act = {
+    n: () => openTodoModal(),
+    '/': () => { goToday(); const s = document.getElementById('todo-search'); s.scrollIntoView({ block: 'center' }); s.focus(); },
+    t: () => goToday(),
+    m: () => open('month-overlay') ? closeMonth() : openMonth(),
+    ',': () => openSettings(),
+    r: () => reload(),
+    '?': () => document.getElementById('keys-overlay').classList.add('open'),
+  }[e.key.toLowerCase()];
+  if (!act) return;
+  e.preventDefault();
+  act();
+});
+
 // Init
 setGreeting();
 loadProfile();
