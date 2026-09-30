@@ -1,3 +1,17 @@
+// Saved preferences were stored under "chris-dashboard-*" before 1.5. Copy each to its new
+// "attention-*" name once, before anything below reads them, so nobody loses their setup.
+try {
+  const old = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k.startsWith('chris-dashboard-')) old.push(k);
+  }
+  for (const k of old) {
+    const renamed = 'attention-' + k.slice('chris-dashboard-'.length);
+    if (localStorage.getItem(renamed) === null) localStorage.setItem(renamed, localStorage.getItem(k));
+  }
+} catch { /* storage blocked: nothing to migrate */ }
+
 // The machine's own zone: one dashboard per person, so where it runs is where they are.
 // A date-time string with no offset ("2026-09-15T12:00:00") parses as local time in this zone.
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -22,7 +36,7 @@ function acctOf(email) { return accounts.find(a => a.email === email) || googleA
 // Keyed by account + calendar, so the same shared calendar can be visible under
 // one account and hidden under the other (that is the usual source of duplicates).
 // Only hidden ones are stored, so newly added calendars default to visible.
-const CAL_HIDDEN_KEY = 'chris-dashboard-hidden-calendars-v1';
+const CAL_HIDDEN_KEY = 'attention-hidden-calendars-v1';
 let hiddenCals = new Set();
 try { hiddenCals = new Set(JSON.parse(localStorage.getItem(CAL_HIDDEN_KEY)) || []); } catch {}
 
@@ -32,7 +46,7 @@ const calKey = (email, calId) => `${email}::${calId}`;
 // Search Calendar. A display preference like the hidden set, so it lives in localStorage.
 // eLearn courses get none: they are all courses, so a tag on each would say nothing.
 const CAL_TYPES = ['Class', 'Work', 'Personal', 'Family', 'Other'];
-const CAL_TYPE_KEY = 'chris-dashboard-calendar-types-v1';
+const CAL_TYPE_KEY = 'attention-calendar-types-v1';
 let calTypes = {};
 try { calTypes = JSON.parse(localStorage.getItem(CAL_TYPE_KEY)) || {}; } catch {}
 const calTypeOf = (email, calId) =>
@@ -54,7 +68,7 @@ const calTypeSelect = (a, c, ai, ci) => {
 
 // Calendars that do not block your time (a deadline calendar is a list of dates, not meetings).
 // Display state like the hidden set, so it lives in localStorage too.
-const CAL_FREE_KEY = 'chris-dashboard-nonbusy-calendars-v1';
+const CAL_FREE_KEY = 'attention-nonbusy-calendars-v1';
 let freeCals = new Set();
 try { freeCals = new Set(JSON.parse(localStorage.getItem(CAL_FREE_KEY)) || []); } catch {}
 const blocksTime = (email, calId) => !freeCals.has(calKey(email, calId));
@@ -1053,12 +1067,12 @@ async function loadEvents(shared) {
 // Search Calendar
 // The schedule cards cover a week and are grouped by day; this one is the flat, searchable
 // list for "when was that meeting again".
-const UPCOMING_KEY = 'chris-dashboard-event-view-v1';
+const UPCOMING_KEY = 'attention-event-view-v1';
 let _upcoming = [];
 let _upErrors = [];
 let _upView = { q: '', days: '30', type: '' };
 // Calendars kept out of this card only. The schedule and month view still show them.
-const EVENT_HIDDEN_KEY = 'chris-dashboard-event-hidden-calendars-v1';
+const EVENT_HIDDEN_KEY = 'attention-event-hidden-calendars-v1';
 let eventHiddenCals = new Set();
 try { eventHiddenCals = new Set(JSON.parse(localStorage.getItem(EVENT_HIDDEN_KEY)) || []); } catch {}
 const inEventList = (email, calId) => !eventHiddenCals.has(calKey(email, calId));
@@ -1169,7 +1183,7 @@ function ymdLocal(y, m, d) {          // m is 0-indexed
 }
 
 // Compact = dots only; expanded = event titles in the cell, like Calendar.app.
-const MONTH_VIEW_KEY = 'chris-dashboard-month-view';
+const MONTH_VIEW_KEY = 'attention-month-view';
 const MAX_CHIPS = 4;
 let monthView = localStorage.getItem(MONTH_VIEW_KEY) || 'compact';
 
@@ -1309,7 +1323,7 @@ function showDayDetail(ymd, dayEvents) {
 }
 
 // To Do
-const TODO_KEY = 'chris-dashboard-todos-v1';
+const TODO_KEY = 'attention-todos-v1';
 
 // Tasks live in tasks.json on the server, so they survive a browser change and
 // can be added from outside the UI. localStorage is kept as an offline mirror.
@@ -1464,7 +1478,7 @@ function dueChip(ymd) {
 // Settings
 // Every knob in one blob. The defaults are what the dashboard hard-coded before this panel
 // existed, so a browser that has never opened it behaves exactly as it always did.
-const SETTINGS_KEY = 'chris-dashboard-settings-v1';
+const SETTINGS_KEY = 'attention-settings-v1';
 const SETTINGS_DEFAULTS = {
   remindAheadDays: 0,   // 0 = only once the deadline is today; 3 = a nudge three days out
   snoozeDays: [1, 3, 7],
@@ -1611,7 +1625,7 @@ function applySettings() {
 // These are view settings (what you are looking at, not what the task is), so they live in
 // localStorage beside the other display preferences. The three fields that do belong to the
 // task itself (doneAt, priority, snoozeUntil) go to SQLite.
-const TASK_VIEW_KEY = 'chris-dashboard-task-view-v1';
+const TASK_VIEW_KEY = 'attention-task-view-v1';
 let _taskView = { q: '', sort: _settings.defaultSort, showDone: false };
 try { _taskView = { ..._taskView, ...(JSON.parse(localStorage.getItem(TASK_VIEW_KEY)) || {}) }; } catch {}
 const saveTaskView = () => localStorage.setItem(TASK_VIEW_KEY, JSON.stringify(_taskView));
@@ -1870,14 +1884,14 @@ const DEADLINE_DAYS = 365;
 
 // Pinned deadlines, by event id. A display preference like the hidden-calendar
 // set, so it lives beside it in localStorage rather than in tasks.db.
-const DEADLINE_PIN_KEY = 'chris-dashboard-pinned-deadlines-v1';
+const DEADLINE_PIN_KEY = 'attention-pinned-deadlines-v1';
 let pinnedDeadlines = new Set();
 try { pinnedDeadlines = new Set(JSON.parse(localStorage.getItem(DEADLINE_PIN_KEY)) || []); } catch {}
 
 // Deadlines already written to the calendar. The fetched events answer this for anything inside
 // the Search Calendar range, but a deadline months out is past it, so each add is also remembered
 // here, which is what stops a second click duplicating one.
-const DEADLINE_ADDED_KEY = 'chris-dashboard-deadlines-on-calendar-v1';
+const DEADLINE_ADDED_KEY = 'attention-deadlines-on-calendar-v1';
 let addedDeadlines = new Set();
 try { addedDeadlines = new Set(JSON.parse(localStorage.getItem(DEADLINE_ADDED_KEY)) || []); } catch {}
 const rememberAdded = () => localStorage.setItem(DEADLINE_ADDED_KEY, JSON.stringify([...addedDeadlines]));
@@ -2414,7 +2428,7 @@ async function reload() {
 // Due reminders
 // Opt-in: nothing fires until the bell is clicked. The server does the checking every 20
 // minutes and posts macOS notifications, so they arrive with the dashboard closed.
-const REMIND_KEY = 'chris-dashboard-reminders-v1';   // legacy page-side switch, migrated below
+const REMIND_KEY = 'attention-reminders-v1';   // legacy page-side switch, migrated below
 let _remindersOn = false;
 
 function putReminders(prefs) {
@@ -2461,8 +2475,8 @@ async function toggleReminders() {
 // Notifications
 // Calendars give no "what changed" feed that covers Moodle too, so each load is compared with
 // the previous one's snapshot. Kept in localStorage: it only means anything to this browser.
-const NOTIF_KEY = 'chris-dashboard-notifications-v1';
-const SNAP_KEY  = 'chris-dashboard-event-snapshot-v1-';
+const NOTIF_KEY = 'attention-notifications-v1';
+const SNAP_KEY  = 'attention-event-snapshot-v1-';
 const MAX_NOTIFS = 100;
 let _notifs = [];
 try { _notifs = JSON.parse(localStorage.getItem(NOTIF_KEY)) || []; } catch {}
@@ -2581,7 +2595,7 @@ function clearReadNotifs()   { _notifs = _notifs.filter(n => !n.read); saveNotif
 
 // Day reminders
 // `day` is a weekday "0"–"6" (every week) or a YYYY-MM-DD (once).
-const DAY_REMINDERS_KEY = 'chris-dashboard-day-reminders-v1';
+const DAY_REMINDERS_KEY = 'attention-day-reminders-v1';
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 let _dayReminders = [];
 try { _dayReminders = JSON.parse(localStorage.getItem(DAY_REMINDERS_KEY)) || []; } catch {}

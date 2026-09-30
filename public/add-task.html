@@ -109,7 +109,8 @@
   // Same knobs as the dashboard's Settings, read from the store it saves them in.
   function deadlineSettings() {
     let s = {};
-    try { s = JSON.parse(localStorage.getItem('chris-dashboard-settings-v1')) || {}; } catch {}
+    // The old name too, in case the dashboard has not run its one-time rename yet.
+    try { s = JSON.parse(localStorage.getItem('attention-settings-v1') || localStorage.getItem('chris-dashboard-settings-v1')) || {}; } catch {}
     const time = /^\d{2}:\d{2}$/.test(s.deadlineTime || '') ? s.deadlineTime : '09:00';
     const [h, m] = time.split(':').map(Number);
     const t = Math.min(h * 60 + m + 30, 23 * 60 + 59);
