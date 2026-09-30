@@ -74,7 +74,7 @@ const ROLLBACK_FILE = path.join(DIR, 'update-rollback.json');
 const WATCHDOG = `
 const { execFileSync, spawn } = require('child_process');
 const fs = require('fs'), path = require('path');
-const { AD_DIR: dir, AD_PORT: port, AD_FROM: from, AD_TO: to } = process.env;
+const { AD_DIR: dir, AD_PORT: port, AD_FROM: from, AD_FROM_VERSION: fromVersion, AD_TO: to } = process.env;
 const want = to.slice(1), until = Date.now() + 90000;
 (async () => {
   while (Date.now() < until) {
@@ -86,7 +86,7 @@ const want = to.slice(1), until = Date.now() + 90000;
   }
   execFileSync('git', ['checkout', '--quiet', '--detach', from], { cwd: dir });
   fs.writeFileSync(path.join(dir, 'update-rollback.json'),
-    JSON.stringify({ failed: want, restored: from.slice(1), at: new Date().toISOString() }));
+    JSON.stringify({ failed: want, restored: fromVersion, at: new Date().toISOString() }));
   if (process.platform === 'win32') {
     const log = fs.openSync(path.join(dir, 'dashboard.log'), 'a');
     spawn(process.execPath, ['server.js'], { cwd: dir, detached: true, stdio: ['ignore', log, log], windowsHide: true }).unref();
@@ -111,7 +111,7 @@ async function install() {
   if (serverPort) {
     spawn(process.execPath, ['-e', WATCHDOG], {
       cwd: DIR, detached: true, stdio: 'ignore', windowsHide: true,
-      env: { ...process.env, AD_DIR: DIR, AD_PORT: String(serverPort), AD_FROM: from, AD_TO: to },
+      env: { ...process.env, AD_DIR: DIR, AD_PORT: String(serverPort), AD_FROM: from, AD_FROM_VERSION: VERSION, AD_TO: to },
     }).unref();
   }
   console.log(`[update] v${VERSION} → ${to}, restarting`);
