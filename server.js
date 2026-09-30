@@ -46,6 +46,9 @@ const ADDED_COLUMNS = {
   done_at:      'TEXT',     // when it was completed; null while the task is still open
   priority:     'INTEGER',  // 1 = flagged; null rather than 0 so the column stays empty
   snooze_until: 'TEXT',     // YYYY-MM-DD — hidden from the list until this date
+  course_event: 'TEXT',     // Moodle event id this task was made for (Course Deadlines card)
+  cal_id:       'TEXT',     // which calendar calEventId lives on; null means the account's primary
+  repeat:       'TEXT',     // 'weekly' | 'monthly' — ticking it off moves the deadline on instead
 };
 {
   const have = new Set(db.prepare('PRAGMA table_info(todos)').all().map(c => c.name));
@@ -59,6 +62,7 @@ const rowToTodo = r => ({
   id: r.id, title: r.title, desc: r.description, link: r.link,
   deadline: r.deadline, calEventId: r.calEventId, calAcct: r.calAcct,
   doneAt: r.done_at, priority: !!r.priority, snoozeUntil: r.snooze_until,
+  courseEventId: r.course_event, calId: r.cal_id, repeat: r.repeat,
 });
 
 function listTodos() {
@@ -67,15 +71,16 @@ function listTodos() {
 
 const insertTodo = db.prepare(
   `INSERT INTO todos (id, title, description, link, deadline, calEventId, calAcct,
-                      done_at, priority, snooze_until)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+                      done_at, priority, snooze_until, course_event, cal_id, repeat)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
 function normalise(t) {
   const title = String(t.title ?? '').trim();
   if (!title) return null;
   return [t.id || newId(), title, t.desc ?? null, t.link ?? null,
           t.deadline ?? null, t.calEventId ?? null, t.calAcct ?? null,
-          t.doneAt ?? null, t.priority ? 1 : null, t.snoozeUntil ?? null];
+          t.doneAt ?? null, t.priority ? 1 : null, t.snoozeUntil ?? null,
+          t.courseEventId ?? null, t.calId ?? null, t.repeat ?? null];
 }
 
 // Replace the whole list, atomically.
@@ -112,6 +117,91 @@ if (fs.existsSync(TASKS_FILE)) {
     fs.renameSync(TASKS_FILE, TASKS_FILE + '.bak');
   } catch (err) { console.error('[migrate]', err.message); }
 }
+
+// ─── Due reminders ────────────────────────────────────────────────
+// Checked here rather than in the page so they arrive with the dashboard closed. Every 20
+// minutes is one SQLite read and nothing else unless something is due — negligible.
+// Delivered through osascript, not the browser: a Safari web app on localhost cannot get
+// notification permission.
+const REMINDERS_FILE = path.join(__dirname, 'reminders.json');
+const REMIND_EVERY = 20 * 60 * 1000;
+const TZ = 'Asia/Makassar';   // same as public/app.js
+
+const REMINDER_DEFAULTS = { on: false, aheadDays: 0, reminded: {}, days: [], dayHour: 7, daysSentOn: null,
+                            doneDeadlines: [] };   // course deadline ids marked submitted by hand
+function loadReminders() {
+  try { return { ...REMINDER_DEFAULTS, ...JSON.parse(fs.readFileSync(REMINDERS_FILE, 'utf8')) }; }
+  catch { return { ...REMINDER_DEFAULTS }; }
+}
+function saveReminders(r) { fs.writeFileSync(REMINDERS_FILE, JSON.stringify(r, null, 2)); }
+
+// title and body go in as argv, so nothing in them is ever parsed as AppleScript.
+function notifyMac(title, body) {
+  return new Promise((resolve, reject) => execFile('osascript', [
+    '-e', 'on run argv', '-e', 'display notification (item 2 of argv) with title (item 1 of argv)', '-e', 'end run',
+    String(title).slice(0, 120), String(body).slice(0, 500),
+  ], { timeout: 10000 }, err => err ? reject(err) : resolve()));
+}
+
+const ymdIn = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: TZ });
+const hourIn = () => Number(new Date().toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: TZ }));
+const daysBetween = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
+const plusDays = (ymd, n) => new Date(Date.parse(ymd) + n * 86400000).toISOString().slice(0, 10);
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const dueWord = d => d < 0 ? 'Overdue' : d === 0 ? 'Due today' : `Due in ${d} day${d > 1 ? 's' : ''}`;
+
+// Day reminders ("every Wednesday: wear batik") land once, in the morning: the page only ever
+// showed them while it was open, which is too late to be useful.
+async function checkDayReminders(r, today) {
+  if (r.daysSentOn === today || hourIn() < r.dayHour) return;
+  const weekday = new Date(today + 'T12:00:00+08:00').getUTCDay();
+  const mine = r.days.filter(x => x.day === today || x.day === String(weekday));
+  r.daysSentOn = today;
+  saveReminders(r);
+  if (!mine.length) return;
+  await notifyMac(`${WEEKDAYS[weekday]} reminder${mine.length > 1 ? 's' : ''}`, mine.map(x => x.text).join('\n'))
+    .catch(err => console.error('[remind]', err.message));
+}
+
+// Course deadlines nag on their own: one that was never turned into a task used to be silent.
+async function dueCourseDeadlines(r, today) {
+  if (!moodle.configured()) return [];
+  const linked = new Set(listTodos().filter(t => t.courseEventId && !t.doneAt).map(t => t.courseEventId));
+  for (const id of r.doneDeadlines) linked.add(id);   // submitted — nothing left to remind about
+  const items = await moodle.eventsFor(today, plusDays(today, Math.max(r.aheadDays, 0)));
+  return items
+    .filter(e => !linked.has(e.id))   // a linked task already speaks for it
+    .map(e => ({ id: e.id, title: (e.summary || 'Course deadline').replace(/ is due$/, ''),
+                 deadline: (e.start?.dateTime || e.start?.date || '').slice(0, 10) }))
+    .filter(e => e.deadline && daysBetween(today, e.deadline) <= r.aheadDays);
+}
+
+// At most one notification per task per day; a task still overdue tomorrow nudges again.
+async function checkDueReminders() {
+  const r = loadReminders();
+  if (!r.on) return;
+  const today = ymdIn();
+  await checkDayReminders(r, today);
+
+  const due = listTodos().filter(t => !t.doneAt && t.deadline
+    && !(t.snoozeUntil && t.snoozeUntil > today)
+    && daysBetween(today, t.deadline) <= r.aheadDays)
+    .map(t => ({ id: t.id, title: t.title, deadline: t.deadline }));
+  let deadlines = [];
+  try { deadlines = await dueCourseDeadlines(r, today); }
+  catch (err) { console.error('[remind]', err.message); }   // campus outage must not mute tasks
+  const all = [...due, ...deadlines];
+  const fresh = all.filter(t => r.reminded[t.id] !== today);
+  if (!fresh.length) return;
+
+  r.reminded = Object.fromEntries(all.map(t => [t.id, today]));   // rebuilt daily, cannot grow forever
+  saveReminders(r);
+  const lines = fresh.map(t => `${dueWord(daysBetween(today, t.deadline))}: ${t.title}`);
+  notifyMac(fresh.length === 1 ? 'Something needs you' : `${fresh.length} things need you`, lines.slice(0, 5).join('\n'))
+    .catch(err => console.error('[remind]', err.message));
+}
+setInterval(checkDueReminders, REMIND_EVERY).unref();
+setTimeout(checkDueReminders, 30000).unref();   // once shortly after boot / wake-up restart
 
 // ─── Token store ──────────────────────────────────────────────────
 // tokens.json holds one long-lived refresh token per account. It never leaves
@@ -271,6 +361,67 @@ http.createServer(async (req, res) => {
       return json(res, 502, { error: err.message });
     }
   }
+  // Due reminders: on/off and how many days ahead. The checking runs here, not in the page.
+  if (p === '/api/reminders' && req.method === 'GET') {
+    const { on, aheadDays, dayHour, doneDeadlines } = loadReminders();
+    return json(res, 200, { on, aheadDays, dayHour, doneDeadlines });
+  }
+  if (p === '/api/reminders' && req.method === 'PUT') {
+    const origin = req.headers.origin;
+    if (origin && origin !== `http://localhost:${PORT}`) return json(res, 403, { error: 'bad origin' });
+    if (!(req.headers['content-type'] || '').includes('application/json')) {
+      return json(res, 415, { error: 'expected application/json' });
+    }
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const b = JSON.parse(body);
+      const r = loadReminders();
+      const turnedOn = b.on === true && !r.on;
+      if (typeof b.on === 'boolean') r.on = b.on;
+      if (Number.isInteger(b.aheadDays) && b.aheadDays >= 0 && b.aheadDays <= 30) r.aheadDays = b.aheadDays;
+      if (Number.isInteger(b.dayHour) && b.dayHour >= 0 && b.dayHour <= 23) r.dayHour = b.dayHour;
+      if (Array.isArray(b.doneDeadlines)) {
+        r.doneDeadlines = [...new Set(b.doneDeadlines.filter(x => typeof x === 'string' && x.startsWith('moodle-')))].slice(-500);
+      }
+      // The page owns the day reminders; the server only needs a copy to send them.
+      if (Array.isArray(b.days)) {
+        r.days = b.days.slice(0, 50)
+          .filter(x => x && typeof x.day === 'string' && typeof x.text === 'string' && x.text.trim())
+          .map(x => ({ day: x.day.slice(0, 10), text: x.text.trim().slice(0, 200) }));
+      }
+      saveReminders(r);
+      if (turnedOn) {
+        await notifyMac('Reminders on', 'You will hear about tasks that are due, even with the dashboard closed.');
+        checkDueReminders();
+      }
+      return json(res, 200, { on: r.on, aheadDays: r.aheadDays, dayHour: r.dayHour, doneDeadlines: r.doneDeadlines });
+    } catch (err) {
+      return json(res, 400, { error: err.message });
+    }
+  }
+
+  // Rename an eLearn course (writes courses.json). Same fencing as /api/reveal: it writes a file.
+  if (p === '/api/course-name' && req.method === 'POST') {
+    const origin = req.headers.origin;
+    if (origin && origin !== `http://localhost:${PORT}`) return json(res, 403, { error: 'bad origin' });
+    if (!(req.headers['content-type'] || '').includes('application/json')) {
+      return json(res, 415, { error: 'expected application/json' });
+    }
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const { id, name } = JSON.parse(body);
+      const course = String(id || '').replace(/^moodle:/, '');
+      const clean = String(name || '').trim();
+      if (!course || course === 'other' || course.startsWith('_')) throw new Error('unknown course');
+      if (!clean || clean.length > 80) throw new Error('name must be 1–80 characters');
+      moodle.setName(course, clean);
+      return json(res, 200, { ok: true });
+    } catch (err) {
+      return json(res, 400, { error: err.message });
+    }
+  }
   // Task list in SQLite, so any local tool (or agent) can read/write it.
   if (p === '/api/todos' && req.method === 'GET') {
     return json(res, 200, { todos: listTodos() });
@@ -367,7 +518,9 @@ http.createServer(async (req, res) => {
   if (!file.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, buf) => {
     if (err) { res.writeHead(404); return res.end('Not found'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
+    // no-cache: Safari (and its Add-to-Dock web apps) otherwise keeps serving an old
+    // index.html beside a new app.js, and the mismatch silently breaks saving.
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(buf);
   });
 }).listen(PORT, () => console.log(`Attention Dashboard → http://localhost:${PORT}`));

@@ -9,6 +9,7 @@ node_modules/
 # through.
 tasks.db*
 tasks.json*
+reminders.json
 
 .playwright-cli/
 .claude/

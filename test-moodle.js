@@ -62,10 +62,11 @@ const byId = (evs, uid) => evs.find(e => e.id === 'moodle-' + uid);
   // Undated events are skipped, not rendered as ghosts.
   assert.strictEqual(events.length, 4, 'expected 4 usable events, got ' + events.length);
 
-  // 01:00Z → 09:00+08:00, and the leading 10 chars must be the LOCAL date.
+  // 01:00Z → 08:00, eLearn's own (GMT+7) clock, labelled +08:00 — the dashboard shows what eLearn's
+  // page shows. The leading 10 chars must still be the date on that clock.
   const a = byId(events, '101@elearn.uc.ac.id');
-  assert.strictEqual(a.start.dateTime, '2026-09-15T09:00:00+08:00');
-  assert.strictEqual(a.end.dateTime, '2026-09-15T10:30:00+08:00');
+  assert.strictEqual(a.start.dateTime, '2026-09-15T08:00:00+08:00');
+  assert.strictEqual(a.end.dateTime, '2026-09-15T09:30:00+08:00');
 
   // Folding is undone and \n / \, are unescaped.
   assert.ok(a.description.includes('Bring your laptop.'), 'folded line was not re-joined');

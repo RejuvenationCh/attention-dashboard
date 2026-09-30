@@ -24,12 +24,26 @@
   </nav>
   <div class="header-right">
     <span>Refreshed <span id="refreshed-at">–</span></span>
+    <button class="header-btn notif-btn" onclick="toggleNotifs()" title="Notifications"><span class="msym">notifications</span><span class="notif-badge" hidden></span></button>
     <button class="header-btn" onclick="openSettings()" title="Settings"><span class="msym">settings</span></button>
     <button class="header-btn reload-btn" onclick="reload()" title="Reload"><span class="msym">refresh</span></button>
   </div>
 </header>
 
+<!-- What the calendars changed since you last looked. Filled by trackChanges(). -->
+<div class="notif-panel" id="notif-panel">
+  <div class="notif-head">
+    <span class="todo-modal-heading">Notifications</span>
+    <button class="text-btn" onclick="markAllNotifsRead()">Mark all read</button>
+    <button class="text-btn" onclick="clearReadNotifs()">Clear read</button>
+  </div>
+  <div id="notif-list"></div>
+</div>
+
 <main>
+  <!-- Day reminders for today and tomorrow, e.g. "every Wednesday: wear batik". Managed in Settings. -->
+  <div class="day-strip" id="day-strip" hidden></div>
+
   <!-- ── LEFT COLUMN ── -->
   <div class="col">
 
@@ -138,6 +152,28 @@
       <div id="event-list"><div class="loading"><span class="spinner"></span></div></div>
     </section>
 
+    <!-- All upcoming events, searchable — the schedule cards above only cover a week -->
+    <section class="mac-window events-card">
+      <div class="section-head" style="margin-bottom:10px">
+        <h2 class="card-h2"><span class="msym">event_list</span> Find an Event</h2>
+        <span class="count-chip neutral" id="upcoming-count">–</span>
+      </div>
+      <div class="task-tools">
+        <label class="task-search">
+          <span class="msym">search</span>
+          <input id="upcoming-search" type="search" placeholder="Search events…" oninput="onUpcomingSearch(this.value)">
+        </label>
+        <button class="task-sort cal-pick-btn" id="upcoming-cal-btn" onclick="toggleUpcomingCals()" title="Which calendars this list shows"></button>
+        <select class="task-sort" id="upcoming-range" onchange="onUpcomingRange(this.value)" title="How far ahead">
+          <option value="7">7 days</option>
+          <option value="30">30 days</option>
+          <option value="90">90 days</option>
+        </select>
+      </div>
+      <div class="cal-list cal-pick" id="upcoming-cal-list" hidden></div>
+      <div id="upcoming-list"><div class="loading"><span class="spinner"></span></div></div>
+    </section>
+
     <!-- Week ahead -->
     <section class="mac-window week">
       <div class="section-head" style="margin-bottom:0">
@@ -155,6 +191,7 @@
     <button title="Back to top" onclick="window.scrollTo({top:0,behavior:'smooth'})"><span class="msym">vertical_align_top</span></button>
     <button title="Month view" onclick="openMonth()"><span class="msym">event_note</span></button>
     <div class="dock-sep"></div>
+    <button class="notif-btn" title="Notifications" onclick="toggleNotifs()"><span class="msym">notifications</span><span class="notif-badge" hidden></span></button>
     <button class="dock-add" title="Add task" onclick="openTodoModal()"><span class="msym">add</span></button>
     <div class="dock-sep"></div>
     <button class="reload-btn" title="Reload" onclick="reload()"><span class="msym">refresh</span></button>
@@ -165,6 +202,7 @@
 <div class="toast" id="toast">
   <span id="toast-msg">Task removed</span>
   <button class="toast-undo" onclick="handleToastUndo()">Undo</button>
+  <button class="toast-close" onclick="hideToast()" title="Dismiss"><span class="msym">close</span></button>
   <div class="toast-bar" id="toast-bar"></div>
 </div>
 
@@ -179,13 +217,21 @@
     <input class="todo-input" id="todo-modal-title" type="text" placeholder="What needs to be done?" onkeydown="if(event.key==='Enter') saveTodo()">
     <label class="todo-form-label">Description (optional)</label>
     <textarea class="todo-input" id="todo-modal-desc" rows="2" placeholder="Any notes or context…"></textarea>
-    <label class="todo-form-label">Link or folder (optional)</label>
-    <div class="input-row">
-      <input class="todo-input" id="todo-modal-link" type="text" placeholder="https://drive.google.com/… or a folder on this Mac">
-      <button type="button" class="browse-btn" id="browse-btn" onclick="pickFolder()" title="Choose a folder on this Mac"><span class="msym">folder_open</span> Browse</button>
-    </div>
+    <label class="todo-form-label">Links or folders (optional)</label>
+    <div id="todo-modal-links"></div>
+    <button type="button" class="text-btn add-link-btn" onclick="addLinkRow({}, true)"><span class="msym" style="font-size:16px">add</span> Add another link</button>
     <label class="todo-form-label">Deadline (optional)</label>
-    <input class="todo-input" id="todo-modal-deadline" type="date">
+    <input class="todo-input deadline-input" id="todo-modal-deadline" type="text" inputmode="numeric" autocomplete="off"
+           placeholder="Day, e.g. 20 · or 20/9 · or 20/9/2026" oninput="paintDeadlinePreview()">
+    <div class="deadline-preview" id="todo-modal-deadline-preview"></div>
+    <label class="todo-form-label">Repeats</label>
+    <select class="todo-input" id="todo-modal-repeat">
+      <option value="">Never</option>
+      <option value="weekly">Every week</option>
+      <option value="monthly">Every month</option>
+    </select>
+    <label class="todo-form-label">Course deadline (optional)</label>
+    <select class="todo-input" id="todo-modal-course" onchange="onCourseLinkChange(this.value)"></select>
     <div class="todo-cal-row">
       <input type="checkbox" id="todo-modal-cal">
       <label for="todo-modal-cal">Add deadline reminder to Google Calendar</label>
@@ -277,6 +323,101 @@
         <option value="1">Monday</option>
         <option value="0">Sunday</option>
       </select>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-deadlinetime">Deadline time
+        <span class="settings-hint">For a task with only a date. A course deadline uses its own due time from eLearn.</span>
+      </label>
+      <div class="settings-pair">
+        <select class="task-sort" id="settings-deadlinetime" onchange="settingsChanged()"></select>
+        <select class="task-sort" id="settings-deadlinewarn" onchange="settingsChanged()">
+          <option value="0">At the time</option>
+          <option value="30">30 min before</option>
+          <option value="60">1 hour before</option>
+          <option value="180">3 hours before</option>
+          <option value="1440">1 day before</option>
+          <option value="2880">2 days before</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-newcal">New task defaults
+        <span class="settings-hint">What the New Task window starts with. Each one can still be changed per task.</span>
+      </label>
+      <div class="settings-stack">
+        <label class="settings-inline">
+          <input class="settings-check" id="settings-newcal" type="checkbox" onchange="settingsChanged()">
+          Add deadline to Google Calendar
+        </label>
+        <label class="settings-inline">Deadline
+          <select class="task-sort" id="settings-newdeadline" onchange="settingsChanged()">
+            <option value="">Empty</option>
+            <option value="0">Today</option>
+            <option value="1">Tomorrow</option>
+            <option value="7">In a week</option>
+          </select>
+        </label>
+        <label class="settings-inline">Repeats
+          <select class="task-sort" id="settings-newrepeat" onchange="settingsChanged()">
+            <option value="">Never</option>
+            <option value="weekly">Every week</option>
+            <option value="monthly">Every month</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-nowline">Now line
+        <span class="settings-hint">The line marking the current time across an event you are in. 0 hides it.</span>
+      </label>
+      <div class="settings-pair">
+        <input id="settings-nowline" type="range" min="0" max="40" step="1"
+               oninput="previewNowLine(this.value)" onchange="settingsChanged()">
+        <span class="settings-num-label" id="settings-nowline-val">9%</span>
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-autotask">New course deadlines
+        <span class="settings-hint">Turn a newly posted eLearn deadline into a task automatically.</span>
+      </label>
+      <input class="settings-check" id="settings-autotask" type="checkbox" onchange="settingsChanged()">
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-writecal">Deadline calendar
+        <span class="settings-hint">Where "Add deadline reminder to Google Calendar" writes.</span>
+      </label>
+      <select class="task-sort" id="settings-writecal" onchange="settingsChanged()"></select>
+    </div>
+
+    <div class="settings-row dr-section">
+      <label class="settings-label" for="dr-text">Day reminders
+        <span class="settings-hint">Shown at the top of the page on that day, e.g. every Wednesday: wear batik.</span>
+      </label>
+      <label class="settings-hint" for="settings-dayhour">Sent as a notification at
+        <input class="todo-input settings-num" id="settings-dayhour" type="number" min="0" max="23" onchange="settingsChanged()">
+        o'clock, and shown at the top of the page all day.
+      </label>
+      <div id="dr-list"></div>
+      <div class="dr-add">
+        <select class="task-sort" id="dr-day" onchange="document.getElementById('dr-date').style.display = this.value === 'date' ? '' : 'none'">
+          <option value="1">Every Monday</option>
+          <option value="2">Every Tuesday</option>
+          <option value="3">Every Wednesday</option>
+          <option value="4">Every Thursday</option>
+          <option value="5">Every Friday</option>
+          <option value="6">Every Saturday</option>
+          <option value="0">Every Sunday</option>
+          <option value="date">On a date…</option>
+        </select>
+        <input class="todo-input" id="dr-date" type="date" style="display:none">
+        <input class="todo-input" id="dr-text" type="text" placeholder="Wear batik" onkeydown="if(event.key==='Enter') addDayReminder()">
+        <button class="todo-btn todo-btn-primary" onclick="addDayReminder()">Add</button>
+      </div>
     </div>
 
     <div class="todo-btn-row">

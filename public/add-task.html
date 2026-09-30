@@ -48,7 +48,7 @@
       <input class="todo-input" id="deadline" type="date">
 
       <div class="todo-cal-row">
-        <input type="checkbox" id="cal">
+        <input type="checkbox" id="cal" checked>
         <label for="cal">Add deadline reminder to Google Calendar</label>
       </div>
 
@@ -106,7 +106,19 @@
   // Mirrors createDeadlineEvent() in app.js — a second copy, because this page cannot
   // call into that file. The event's shape (📌 prefix, 09:00 WITA, 24h popup reminder)
   // has to stay in step with it, so change both together.
+  // Same knobs as the dashboard's Settings, read from the store it saves them in.
+  function deadlineSettings() {
+    let s = {};
+    try { s = JSON.parse(localStorage.getItem('chris-dashboard-settings-v1')) || {}; } catch {}
+    const time = /^\d{2}:\d{2}$/.test(s.deadlineTime || '') ? s.deadlineTime : '09:00';
+    const [h, m] = time.split(':').map(Number);
+    const t = Math.min(h * 60 + m + 30, 23 * 60 + 59);
+    return { time, end: `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`,
+             warn: Number.isFinite(s.deadlineWarn) ? s.deadlineWarn : 1440 };
+  }
+
   async function createDeadlineEvent(title, deadline) {
+    const dl = deadlineSettings();
     const accounts = await (await fetch('api/accounts')).json();
     const acct = accounts.find(a => a.source !== 'moodle');   // Google only; Moodle is read-only
     if (!acct) throw new Error('no Google account connected');
@@ -116,9 +128,9 @@
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cred.token },
       body: JSON.stringify({
         summary: `📌 Deadline: ${title}`,
-        start: { dateTime: deadline + 'T09:00:00+08:00', timeZone: TZ },
-        end:   { dateTime: deadline + 'T09:30:00+08:00', timeZone: TZ },
-        reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 1440 }] },
+        start: { dateTime: `${deadline}T${dl.time}:00+08:00`, timeZone: TZ },
+        end:   { dateTime: `${deadline}T${dl.end}:00+08:00`, timeZone: TZ },
+        reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: dl.warn }] },
       }),
     });
     if (!res.ok) throw new Error('create failed');
@@ -193,6 +205,10 @@
   // WKWebView does not reliably honour autofocus, and being able to type the instant the
   // window appears is the entire point of the key.
   title.focus();
+  // When Hammerspoon makes the window key, land in the title unless a field already has focus.
+  window.addEventListener('focus', () => {
+    if (!document.activeElement.matches('input, textarea, select')) title.focus();
+  });
 </script>
 </body>
 </html>

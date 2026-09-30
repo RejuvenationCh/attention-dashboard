@@ -50,8 +50,13 @@ const configured = () => !!process.env.MOODLE_ICS_URL;
 // 2026-09-15T01:00:00Z → 2026-09-15T09:00:00+08:00.
 // The first 10 characters must be the *local* date: renderTlEvent, loadEvents'
 // byDate bucketing and getFreeBlocks all slice or startsWith on them.
+//
+// The feed's clock is shifted to eLearn's own, Jakarta time (GMT+7), before being labelled +08:00.
+// So "due 23:59" reads 23:59 here, the same as on eLearn's page, instead of 00:59 the next day.
+// That lands every deadline one hour *before* its real cutoff — the safe direction to be wrong in.
+const ELEARN_OFFSET_MS = 7 * 3600 * 1000;
 function toAppIso(ms) {
-  return new Date(ms + APP_OFFSET_MS).toISOString().slice(0, 19) + APP_OFFSET;
+  return new Date(ms + ELEARN_OFFSET_MS).toISOString().slice(0, 19) + APP_OFFSET;
 }
 
 // RFC 5545 escaping, in a single pass so "\\n" (a literal backslash then n)
@@ -196,7 +201,9 @@ async function feed() {
 
   // Re-read courses.json on every refresh, so an edit lands within FEED_TTL
   // without a restart — unlike .env, which process.loadEnvFile freezes at boot.
-  cache = { at: Date.now(), failedAt: 0, data: build(text, new URL(url).origin, readNames()) };
+  // text + origin are kept so a rename can rebuild without refetching the feed.
+  const origin = new URL(url).origin;
+  cache = { at: Date.now(), failedAt: 0, text, origin, data: build(text, origin, readNames()) };
   return cache.data;
 }
 
@@ -209,7 +216,18 @@ async function eventsFor(startYmd, endYmd) {
   });
 }
 
+// Rename a course from the dashboard. Edits whichever key already names it (full or
+// term-stripped), so a hand-written entry is updated rather than shadowed.
+function setName(course, name) {
+  const names = readNames();
+  const stem = c => c.replace(/^\d+_/, '');
+  const key = Object.keys(names).find(k => !k.startsWith('_') && stem(k) === stem(course)) || course;
+  names[key] = name;
+  fs.writeFileSync(NAMES_PATH, JSON.stringify(names, null, 2) + '\n');
+  if (cache.text) cache.data = build(cache.text, cache.origin, names);
+}
+
 // Drop the cache. Used by test-moodle.js and handy when checking a new URL by hand.
 function _reset() { cache = { at: 0, failedAt: 0, data: null }; }
 
-module.exports = { configured, feed, eventsFor, parseIcs, build, _reset, SITE_NAME, ACCT };
+module.exports = { configured, feed, eventsFor, parseIcs, build, setName, _reset, SITE_NAME, ACCT };

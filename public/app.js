@@ -23,6 +23,22 @@ let hiddenCals = new Set();
 try { hiddenCals = new Set(JSON.parse(localStorage.getItem(CAL_HIDDEN_KEY)) || []); } catch {}
 
 const calKey = (email, calId) => `${email}::${calId}`;
+
+// Calendars that do not block your time (a deadline calendar is a list of dates, not meetings).
+// Display state like the hidden set, so it lives in localStorage too.
+const CAL_FREE_KEY = 'chris-dashboard-nonbusy-calendars-v1';
+let freeCals = new Set();
+try { freeCals = new Set(JSON.parse(localStorage.getItem(CAL_FREE_KEY)) || []); } catch {}
+const blocksTime = (email, calId) => !freeCals.has(calKey(email, calId));
+
+function toggleCalBusy(ai, ci) {
+  const acct = accounts[ai], cal = acct.calendars[ci];
+  const k = calKey(acct.email, cal.id);
+  freeCals.has(k) ? freeCals.delete(k) : freeCals.add(k);
+  localStorage.setItem(CAL_FREE_KEY, JSON.stringify([...freeCals]));
+  renderAccounts();
+  loadEvents();   // the free blocks are what this changes
+}
 const isCalShown = (email, calId) => !hiddenCals.has(calKey(email, calId));
 function shownCalendars(acct) { return acct.calendars.filter(c => isCalShown(acct.email, c.id)); }
 function totalCalendars() { return accounts.reduce((n, a) => n + shownCalendars(a).length, 0); }
@@ -107,7 +123,7 @@ async function listCalendars(token) {
     list: items
       .filter(c => c.selected !== false && !c.deleted)   // mirror what's ticked in Google Calendar
       .slice(0, MAX_CALENDARS)
-      .map(c => ({ id: c.id, name: c.summaryOverride || c.summary || c.id, color: c.backgroundColor })),
+      .map(c => ({ id: c.id, name: c.summaryOverride || c.summary || c.id, color: c.backgroundColor, access: c.accessRole })),
   };
 }
 
@@ -169,6 +185,10 @@ function renderAccounts() {
             <input type="checkbox" ${isCalShown(a.email, c.id) ? 'checked' : ''} onchange="toggleCal(${ai}, ${ci})">
             <span class="cal-swatch" style="background:${c.color || '#94a3b8'}"></span>
             <span class="cal-name" title="${escape(c.name)}">${escape(c.name)}</span>
+            ${isMoodle && c.id !== 'moodle:other' ? `<button class="cal-rename" title="Rename" onclick="event.preventDefault(); renameCourse(${ai}, ${ci})"><span class="msym">edit</span></button>` : ''}
+            <button class="cal-busy${blocksTime(a.email, c.id) ? '' : ' off'}" onclick="event.preventDefault(); toggleCalBusy(${ai}, ${ci})"
+              title="${blocksTime(a.email, c.id) ? 'Blocks your free time — click to ignore' : 'Ignored when working out free time'}"
+              ><span class="msym">${blocksTime(a.email, c.id) ? 'event_busy' : 'event_available'}</span></button>
           </label>`).join('')}
       </div>
     </div>`;
@@ -189,6 +209,22 @@ function renderAccounts() {
   // covers having no accounts at all. A failed account shows its own button.
   + (googleAccounts().length || failedAccounts.length ? '' :
     `<button class="btn-primary acct-add" onclick="addAccount()">Connect Google Calendar</button>`);
+}
+
+// Moodle only gives course codes, so names live in courses.json on the server.
+async function renameCourse(ai, ci) {
+  const c = accounts[ai].calendars[ci];
+  const name = prompt(`Name for ${c.id.replace(/^moodle:/, '')}`, c.name)?.trim();
+  if (!name || name === c.name) return;
+  try {
+    await api('/api/course-name', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: c.id, name }),
+    });
+  } catch (err) { showToast(`Could not rename: ${err.message}`, null, 5); return; }
+  c.name = name;
+  renderAccounts();
+  reload();   // events carry the course name too
 }
 
 // ─── Utilities ────────────────────────────────────────────────────
@@ -245,13 +281,13 @@ let _calErrors = [];
 // `errors` defaults to the shared banner list, but a caller fetching a different
 // range concurrently (the deadlines card) passes its own so the two don't clobber
 // each other — and so one failure isn't reported twice.
-async function fetchRange(startYmd, endYmd, errors = _calErrors) {
+async function fetchRange(startYmd, endYmd, errors = _calErrors, maxResults = 50) {
   const params = new URLSearchParams({
     timeMin: startYmd + 'T00:00:00+08:00',
     timeMax: endYmd + 'T23:59:59+08:00',
     singleEvents: 'true',   // expand recurring events, as the MCP tool did implicitly
     orderBy: 'startTime',
-    maxResults: '50',
+    maxResults: String(maxResults),
   });
   errors.length = 0;
   // Every Google calendar of every connected account, each with its own token.
@@ -283,27 +319,47 @@ async function fetchRange(startYmd, endYmd, errors = _calErrors) {
 }
 
 // ─── Calendar API write helpers ───────────────────────────────────
-// Writes go to the first connected account's own calendar.
-async function createDeadlineEvent(title, deadline) {
-  const acct = googleAccounts()[0];
+// Which calendar deadline reminders are written to (Settings). Falls back to the first
+// connected account's own calendar, which is where they always went before the setting existed.
+const writableCalendars = () => googleAccounts().flatMap(a =>
+  a.calendars.filter(c => c.access === 'owner' || c.access === 'writer').map(c => ({ acct: a, cal: c })));
+
+function writeTarget() {
+  const [email, calId] = String(_settings.writeCal || '').split('::');
+  const acct = googleAccounts().find(a => a.email === email);
+  return acct && calId ? { acct, calId } : { acct: googleAccounts()[0], calId: WRITE_CAL };
+}
+
+// Deadline events are half-hour blocks; 23:45 would otherwise spill into the next day.
+function plusHalfHour(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const t = Math.min(h * 60 + m + 30, 23 * 60 + 59);
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
+
+// `time` is the deadline's own due time when it has one (eLearn gives "…is due 00:59"); only a
+// task with a bare date falls back to the hour set in Settings.
+async function createDeadlineEvent(title, deadline, time = _settings.deadlineTime) {
+  const { acct, calId } = writeTarget();
   if (!acct) throw new Error('No Google account connected');
-  const res = await gcal(`/calendars/${encodeURIComponent(WRITE_CAL)}/events?sendUpdates=none`, {
+  const res = await gcal(`/calendars/${encodeURIComponent(calId)}/events?sendUpdates=none`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       summary: `📌 Deadline: ${title}`,
-      start: { dateTime: deadline + 'T09:00:00+08:00', timeZone: TZ },
-      end:   { dateTime: deadline + 'T09:30:00+08:00', timeZone: TZ },
-      reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 1440 }] },
+      start: { dateTime: `${deadline}T${time}:00+08:00`, timeZone: TZ },
+      end:   { dateTime: `${deadline}T${plusHalfHour(time)}:00+08:00`, timeZone: TZ },
+      reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: _settings.deadlineWarn }] },
     }),
   }, acct);
   if (!res.ok) throw new Error('create failed');
-  return { id: (await res.json()).id || null, acct: acct.email };
+  return { id: (await res.json()).id || null, acct: acct.email, calId };
 }
 
 // Best-effort: 204 = deleted, 410 = already gone. Both fine, never throws.
-function deleteCalendarEvent(eventId, acctEmail) {
-  return gcal(`/calendars/${encodeURIComponent(WRITE_CAL)}/events/${encodeURIComponent(eventId)}?sendUpdates=none`,
+// calId is stored per task: the setting may point somewhere else by the time it is deleted.
+function deleteCalendarEvent(eventId, acctEmail, calId = WRITE_CAL) {
+  return gcal(`/calendars/${encodeURIComponent(calId || WRITE_CAL)}/events/${encodeURIComponent(eventId)}?sendUpdates=none`,
     { method: 'DELETE' }, acctOf(acctEmail)).catch(() => {});
 }
 
@@ -337,7 +393,7 @@ function getFreeBlocks(events, ymd) {
 
   const MIN = 45 * 60000;
   const timed = events
-    .filter(e => e.start?.dateTime && e.start.dateTime.startsWith(ymd))
+    .filter(e => e.start?.dateTime && e.start.dateTime.startsWith(ymd) && blocksTime(e._acct, e._calId))
     .sort((a,b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
 
   const blocks = [];
@@ -681,13 +737,16 @@ function renderTlEvent(e, isToday) {
   _evRegistry[key] = e;
   return `
   <div class="tl-event" id="${key}">
-    <div class="tl-time${now_ ? ' now' : ''}">${formatTime(e.start?.dateTime)}</div>
+    <div class="tl-time${now_ ? ' now' : ''}">${formatTime(e.start?.dateTime)}${
+      e.start?.dateTime && e.end?.dateTime ? `<span class="tl-end">${formatTime(e.end.dateTime)}</span>` : ''}</div>
+    ${now_ ? '<div class="tl-nowbar"></div>' : ''}
     <div class="tl-card${now_ ? ' current' : ''}${needsRsvp ? ' ghost' : ''}">
+      ${now_ ? `<div class="tl-now" data-s="${start}" data-e="${end}"></div>` : ''}
       ${needsRsvp ? '' : `<div class="bar" style="background:${evColor(e)}"></div>`}
       ${canDeleteEvent(e) ? `<button class="ev-del" onclick="event.stopPropagation(); deleteEvent('${key}')" title="Delete from Google Calendar"><span class="msym">close</span></button>` : ''}
       <div class="tl-title"><a href="${escape(e.htmlLink||'#')}" target="_blank">${title}</a></div>
       <div class="tl-meta">
-        ${escape(e._calName)}${acctTag(e)}${e.location?' · '+escape(e.location):''}
+        ${now_ ? `<span class="tl-live">on now · until ${formatTime(end)}</span> · ` : ''}${escape(e._calName)}${acctTag(e)}${e.location?' · '+escape(e.location):''}
         ${meetUrl?` · <span class="msym">videocam</span> <a href="${escape(meetUrl)}" target="_blank">Join Meet</a>`:''}
       </div>
     </div>
@@ -704,7 +763,28 @@ function renderFreeBlock(from, to) {
   </div>`;
 }
 
-const NOW_LINE = '<div class="now-line"><div class="now-line-bar"></div><div class="now-tag">NOW</div></div>';
+// Moves the in-card line as the clock does, so it stays right between refreshes.
+function tickNowLines() {
+  for (const el of document.querySelectorAll('.tl-now')) {
+    const s = Date.parse(el.dataset.s), e = Date.parse(el.dataset.e), now = Date.now();
+    if (!(e > s)) continue;
+    // Height, not offset: the marker runs down the card's own edge, where it crosses no text.
+    const frac = Math.min(1, Math.max(0, (now - s) / (e - s)));
+    el.style.height = `${frac * 100}%`;
+    // The rule runs at the same height across the row, but is painted before the card, so it
+    // shows in the margins and passes behind the card rather than over its text.
+    const card = el.closest('.tl-card'), bar = card?.parentElement.querySelector('.tl-nowbar');
+    if (bar) bar.style.top = `${card.offsetTop + card.offsetHeight * frac}px`;
+  }
+}
+
+// Card heights change with the window, and the rule is positioned in pixels against them.
+addEventListener('resize', tickNowLines);
+
+// When nothing is running the line falls between two cards, and carries the real time so it is
+// never read as the start of the card below it.
+const nowLine = () => `<div class="now-line"><div class="now-line-bar"></div><div class="now-tag">NOW ${
+  new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: TZ })}</div></div>`;
 
 // One day's event stack; today gets interleaved free blocks + a NOW line.
 function renderDayRows(ymd, dayEvents, isToday) {
@@ -722,23 +802,36 @@ function renderDayRows(ymd, dayEvents, isToday) {
     item.type === 'event' ? renderTlEvent(item.e, isToday) : renderFreeBlock(item.from, item.to)
   );
 
-  if (isToday) {
+  // Nothing running: the line goes between two cards. Something running: it is drawn through
+  // that card instead (see .tl-now), the way a calendar grid does it.
+  if (isToday && !items.some(it => it.type === 'event' && it.e.start?.dateTime
+      && isHappening(it.e.start.dateTime, it.e.end?.dateTime || it.e.start.dateTime))) {
     const now = Date.now();
-    let idx = items.findIndex(it => it.t > now);
+    // An event you are in the middle of belongs below the line, whole, rather than being left
+    // above it as if it were over.
+    let idx = items.findIndex(it => it.t > now
+      || (it.type === 'event' && it.e.start?.dateTime && isHappening(it.e.start.dateTime, it.e.end?.dateTime || it.e.start.dateTime)));
     if (idx === -1) idx = items.length;
-    parts.splice(idx, 0, NOW_LINE);
+    parts.splice(idx, 0, nowLine());
   }
+  setTimeout(tickNowLines);   // after this HTML is in the DOM
   return `<div class="tl-events">${parts.join('')}</div>`;
 }
 
 // ─── Load Events ──────────────────────────────────────────────────
 async function loadEvents() {
-  _evRegistry = {};   // fresh render, drop the previous keys
   const events = await fetchRange(getDateKey(0), getDateKey(6));
   renderCountdown(events);
 
   const rsvp = events.filter(e => e.attendees?.some(a => a.self && a.responseStatus === 'needsAction'));
   renderRsvp(rsvp);
+
+  // Campus events are tracked by the deadlines card over its whole year, so they stay out
+  // of this one — otherwise every Moodle change would be announced twice. A partial fetch
+  // would read as mass deletion, so a load with errors is not compared at all.
+  if (!_calErrors.length) {
+    trackChanges('week', events.filter(e => !e.id.startsWith('moodle-')), getDateKey(0), getDateKey(6));
+  }
 
   // Group by date
   const byDate = {};
@@ -804,6 +897,103 @@ async function loadEvents() {
         </div>
       </div>`;
   }).join('')}</div>`;
+}
+
+// ─── Find an Event ────────────────────────────────────────────────
+// The schedule cards cover a week and are grouped by day; this one is the flat, searchable
+// list for "when was that meeting again".
+const UPCOMING_KEY = 'chris-dashboard-event-view-v1';
+let _upcoming = [];
+let _upErrors = [];
+let _upView = { q: '', days: '30' };
+// Calendars kept out of this card only — the schedule and month view still show them.
+const EVENT_HIDDEN_KEY = 'chris-dashboard-event-hidden-calendars-v1';
+let eventHiddenCals = new Set();
+try { eventHiddenCals = new Set(JSON.parse(localStorage.getItem(EVENT_HIDDEN_KEY)) || []); } catch {}
+const inEventList = (email, calId) => !eventHiddenCals.has(calKey(email, calId));
+
+function toggleUpcomingCals() {
+  const el = document.getElementById('upcoming-cal-list');
+  el.hidden = !el.hidden;
+}
+
+function toggleUpcomingCal(k) {
+  eventHiddenCals.has(k) ? eventHiddenCals.delete(k) : eventHiddenCals.add(k);
+  localStorage.setItem(EVENT_HIDDEN_KEY, JSON.stringify([...eventHiddenCals]));
+  renderUpcoming();
+}
+
+function setUpcomingCals(only) {
+  const all = accounts.flatMap(a => shownCalendars(a).map(c => calKey(a.email, c.id)));
+  eventHiddenCals = new Set(only ? all : []);
+  localStorage.setItem(EVENT_HIDDEN_KEY, JSON.stringify([...eventHiddenCals]));
+  renderUpcoming();
+}
+try { _upView = { ..._upView, ...(JSON.parse(localStorage.getItem(UPCOMING_KEY)) || {}) }; } catch {}
+const saveUpView = () => localStorage.setItem(UPCOMING_KEY, JSON.stringify(_upView));
+
+function onUpcomingSearch(v) { _upView.q = v; saveUpView(); renderUpcoming(); }
+function onUpcomingRange(v)  { _upView.days = v; saveUpView(); loadUpcoming(); }
+
+async function loadUpcoming() {
+  const list = document.getElementById('upcoming-list');
+  list.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+  try {
+    // 250 rather than the timeline's 50: a term's worth of classes overruns a small page.
+    _upcoming = await fetchRange(getDateKey(0), getDateKey(Number(_upView.days) || 30), _upErrors, 250);
+  } catch (err) {
+    list.innerHTML = `<div class="error">Could not load events: ${escape(err.message)}</div>`;
+    return;
+  }
+  renderUpcoming();
+}
+
+function renderUpcoming() {
+  const cals = accounts.flatMap(a => shownCalendars(a).map(c => ({ a, c, k: calKey(a.email, c.id) })));
+  const off = cals.filter(x => !inEventList(x.a.email, x.c.id)).length;
+  document.getElementById('upcoming-cal-btn').textContent =
+    off ? `Calendars · ${cals.length - off}/${cals.length}` : 'All calendars';
+  document.getElementById('upcoming-cal-list').innerHTML = cals.map(({ a, c, k }) => `
+    <label class="cal-item">
+      <input type="checkbox" ${inEventList(a.email, c.id) ? 'checked' : ''} onchange="toggleUpcomingCal('${escape(k)}')">
+      <span class="cal-swatch" style="background:${c.color || '#94a3b8'}"></span>
+      <span class="cal-name" title="${escape(c.name)}">${escape(c.name)}</span>
+    </label>`).join('')
+    + `<div class="cal-pick-actions">
+         <button class="text-btn" onclick="setUpcomingCals(false)">Select all</button>
+         <button class="text-btn" onclick="setUpcomingCals(true)">Clear all</button>
+       </div>`;
+  document.getElementById('upcoming-search').value = _upView.q;
+  document.getElementById('upcoming-range').value = _upView.days;
+
+  const q = _upView.q.trim().toLowerCase();
+  const rows = _upcoming.filter(e => inEventList(e._acct, e._calId)
+    && (!q || `${e.summary || ''} ${e.location || ''} ${e._calName || ''}`.toLowerCase().includes(q)));
+
+  document.getElementById('upcoming-count').textContent = rows.length;
+  document.getElementById('upcoming-list').innerHTML = rows.length
+    ? `<div class="task-list">${rows.map(upcomingRow).join('')}</div>`
+    : `<div class="empty">${q ? 'Nothing matches that.' : off === cals.length ? 'Every calendar is switched off.' : 'Nothing scheduled.'}</div>`;
+}
+
+function upcomingRow(e) {
+  const start = e.start?.dateTime || e.start?.date || '';
+  const ymd = start.slice(0, 10);
+  const key = 'ev' + (_evSeq++);
+  _evRegistry[key] = e;
+  return `
+  <div class="task-row" id="${key}">
+    <div class="task-main">
+      <div class="task-title"><a href="${escape(e.htmlLink || '#')}" target="_blank">${escape(e.summary || '(No title)')}</a></div>
+      <div class="task-meta course-meta">
+        <span class="cal-swatch" style="background:${evColor(e)}"></span>
+        <span>${relDayLabel(ymd)}${e.start?.dateTime ? ' · ' + formatTime(e.start.dateTime) : ' · all day'} · ${escape(e._calName || '')}</span>
+      </div>
+    </div>
+    <div class="task-actions">
+      ${canDeleteEvent(e) ? `<button onclick="deleteEvent('${key}')" title="Delete from Google Calendar"><span class="msym">close</span></button>` : ''}
+    </div>
+  </div>`;
 }
 
 // ─── Month view ───────────────────────────────────────────────────
@@ -1005,6 +1195,49 @@ function isLocalPath(v = '') { return /^(~|\/)/.test(v.trim()); }
 
 // Trailing spaces are legal in macOS filenames and Finder hides them, so a blanket
 // .trim() silently breaks paths like "…/Day 5 ". Only URLs get trimmed both ends.
+// A task can carry several links. They share the `link` column, one per line, so no schema
+// change was needed and every task saved before this still reads as a list of one.
+// A line may carry a name first, tab-separated: "Brief\thttps://…". A tab cannot be typed into
+// these fields, so it never collides with a real URL or path, and unnamed lines read as before.
+// cleanLink on the target, not trim: a folder path's trailing space is part of its name.
+function linksOf(t) {
+  return String(t?.link || '').split('\n').map(line => {
+    const tab = line.indexOf('\t');
+    return { title: tab < 0 ? '' : line.slice(0, tab).trim(), url: cleanLink(tab < 0 ? line : line.slice(tab + 1)) };
+  }).filter(l => l.url);
+}
+const linkLine = l => l.title ? `${l.title.replace(/[\t\n]/g, ' ')}\t${l.url}` : l.url;
+
+function addLinkRow(link = {}, focus = false) {
+  const row = document.createElement('div');
+  row.className = 'input-row link-row';
+  row.innerHTML = `
+    <input class="todo-input todo-link-name" type="text" placeholder="Name (optional)">
+    <input class="todo-input todo-link-input" type="text" placeholder="https://drive.google.com/… or a folder on this Mac">
+    <button type="button" class="browse-btn" onclick="pickFolder(this)" title="Choose a folder on this Mac"><span class="msym">folder_open</span> Browse</button>
+    <button type="button" class="icon-btn link-remove" onclick="removeLinkRow(this)" title="Remove this link"><span class="msym">close</span></button>`;
+  row.querySelector('.todo-link-name').value = link.title || '';
+  row.querySelector('.todo-link-input').value = link.url || '';
+  document.getElementById('todo-modal-links').appendChild(row);
+  if (focus) row.querySelector('.todo-link-name').focus();
+}
+
+// The last row is cleared rather than removed, so there is always one field to type into.
+function removeLinkRow(btn) {
+  const box = document.getElementById('todo-modal-links');
+  if (box.children.length > 1) btn.closest('.link-row').remove();
+  else btn.closest('.link-row').querySelectorAll('input').forEach(i => { i.value = ''; });
+}
+
+function setModalLinks(links) {
+  document.getElementById('todo-modal-links').innerHTML = '';
+  (links.length ? links : [{}]).forEach(l => addLinkRow(l));
+}
+const getModalLinks = () => [...document.querySelectorAll('.link-row')].map(r => ({
+  title: r.querySelector('.todo-link-name').value.trim(),
+  url: cleanLink(r.querySelector('.todo-link-input').value),
+})).filter(l => l.url);
+
 function cleanLink(v = '') {
   if (!v.trim()) return null;
   return isLocalPath(v)
@@ -1013,8 +1246,8 @@ function cleanLink(v = '') {
 }
 
 // Native folder picker, run by the server — the browser cannot expose a real path.
-async function pickFolder() {
-  const btn = document.getElementById('browse-btn');
+async function pickFolder(btn) {
+  const input = btn.closest('.link-row').querySelector('.todo-link-input');
   const errEl = document.getElementById('todo-modal-err');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Choosing…';
@@ -1027,7 +1260,7 @@ async function pickFolder() {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'picker failed');
     if (d.path) {
-      document.getElementById('todo-modal-link').value = d.path;
+      input.value = d.path;
       errEl.textContent = '';
     }
   } catch (err) {
@@ -1039,14 +1272,14 @@ async function pickFolder() {
 }
 
 // Opening Finder has to go through the server; browsers block file:// from http://.
-async function revealTodoPath(id) {
-  const t = getTodos().find(x => x.id === id);
-  if (!t?.link) return;
+async function revealTodoPath(id, i = 0) {
+  const path = linksOf(getTodos().find(x => x.id === id))[i]?.url;
+  if (!path) return;
   try {
     const r = await fetch('/api/reveal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: t.link }),
+      body: JSON.stringify({ path }),
     });
     if (!r.ok) throw new Error((await r.json()).error || 'could not open');
   } catch (err) {
@@ -1074,11 +1307,24 @@ const SETTINGS_DEFAULTS = {
   dayStart: 7,          // what the progress ring measures, not the whole 24 hours
   dayEnd: 22,
   defaultSort: 'manual',
+  writeCal: '',         // '' = the first account's own calendar, as it worked before the setting
+  autoTaskDeadlines: false,
+  dayReminderHour: 7,   // when the server sends that day's reminders
+  nowLineAlpha: 0.09,   // how strong the current-time rule is; 0 hides it
+  newTaskCal: true,     // what a New Task starts with — each is still per-task in the window
+  newTaskDeadline: '',  // '' | days from today as a string ('0' = today)
+  newTaskRepeat: '',
+  deadlineTime: '09:00',   // when a deadline reminder sits on the calendar
+  deadlineWarn: 1440,      // minutes before that Google pops its reminder
   weekStartsOn: 1,      // 0 = Sunday, 1 = Monday
 };
 let _settings = { ...SETTINGS_DEFAULTS };
 try { _settings = { ..._settings, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}) }; } catch {}
-const saveSettings = () => localStorage.setItem(SETTINGS_KEY, JSON.stringify(_settings));
+const saveSettings = () => {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(_settings));
+  // The server does the reminding, so it needs the one setting that shapes it.
+  putReminders({ aheadDays: _settings.remindAheadDays, dayHour: _settings.dayReminderHour }).catch(() => {});
+};
 
 // "Tomorrow" beats "1 day", and 7 is the one everybody means by next week.
 const snoozeLabel = d => d === 1 ? 'Tomorrow' : d === 7 ? 'Next week' : `${d} day${d > 1 ? 's' : ''}`;
@@ -1086,6 +1332,7 @@ const hourLabel = h => `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`;
 
 function openSettings() {
   paintSettings();
+  renderDayReminderSettings();
   document.getElementById('settings-overlay').classList.add('open');
 }
 const closeSettings = () => document.getElementById('settings-overlay').classList.remove('open');
@@ -1097,6 +1344,26 @@ function paintSettings() {
   document.getElementById('settings-day-end').value = _settings.dayEnd;
   document.getElementById('settings-sort').value = _settings.defaultSort;
   document.getElementById('settings-week').value = String(_settings.weekStartsOn);
+  const wc = document.getElementById('settings-writecal');
+  wc.innerHTML = '<option value="">Default (first account)</option>'
+    + writableCalendars().map(({ acct, cal }) =>
+        `<option value="${escape(calKey(acct.email, cal.id))}">${escape(cal.name)} — ${escape(acct.email)}</option>`).join('');
+  wc.value = writableCalendars().some(({ acct, cal }) => calKey(acct.email, cal.id) === _settings.writeCal)
+    ? _settings.writeCal : '';
+  document.getElementById('settings-autotask').checked = _settings.autoTaskDeadlines;
+  document.getElementById('settings-dayhour').value = _settings.dayReminderHour;
+  const dt = document.getElementById('settings-deadlinetime');
+  dt.innerHTML = Array.from({ length: 48 }, (_, i) => {
+    const hhmm = `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`;
+    return `<option value="${hhmm}">${hhmm}</option>`;
+  }).join('');
+  dt.value = _settings.deadlineTime;
+  document.getElementById('settings-deadlinewarn').value = String(_settings.deadlineWarn);
+  document.getElementById('settings-newcal').checked = _settings.newTaskCal;
+  document.getElementById('settings-newdeadline').value = _settings.newTaskDeadline;
+  document.getElementById('settings-newrepeat').value = _settings.newTaskRepeat;
+  document.getElementById('settings-nowline').value = Math.round(_settings.nowLineAlpha * 100);
+  document.getElementById('settings-nowline-val').textContent = `${Math.round(_settings.nowLineAlpha * 100)}%`;
   document.getElementById('donut-wrap').setAttribute('title',
     `Day progress, ${hourLabel(_settings.dayStart)} to ${hourLabel(_settings.dayEnd)}`);
 }
@@ -1125,12 +1392,27 @@ function settingsChanged() {
     dayStart, dayEnd,
     defaultSort: document.getElementById('settings-sort').value,
     weekStartsOn: Number(document.getElementById('settings-week').value) === 0 ? 0 : 1,
+    writeCal: document.getElementById('settings-writecal').value,
+    autoTaskDeadlines: document.getElementById('settings-autotask').checked,
+    dayReminderHour: num('settings-dayhour', 0, 23, _settings.dayReminderHour),
+    nowLineAlpha: num('settings-nowline', 0, 40, _settings.nowLineAlpha * 100) / 100,
+    deadlineTime: document.getElementById('settings-deadlinetime').value || _settings.deadlineTime,
+    deadlineWarn: Number(document.getElementById('settings-deadlinewarn').value),
+    newTaskCal: document.getElementById('settings-newcal').checked,
+    newTaskDeadline: document.getElementById('settings-newdeadline').value,
+    newTaskRepeat: document.getElementById('settings-newrepeat').value,
   };
   saveSettings();
   adoptDefaultSort();
   applySettings();
   paintSettings();
   showToast('Settings saved', null, 3);
+}
+
+// Dragging shows the change straight away; the value is only stored on release (onchange).
+function previewNowLine(v) {
+  document.getElementById('settings-nowline-val').textContent = `${v}%`;
+  document.documentElement.style.setProperty('--nowline-alpha', String(v / 100));
 }
 
 function resetSettings() {
@@ -1153,6 +1435,7 @@ function adoptDefaultSort() {
 // Just redo everything a setting feeds — cheap enough that tracking dependencies would cost
 // more than it saves.
 function applySettings() {
+  document.documentElement.style.setProperty('--nowline-alpha', String(_settings.nowLineAlpha));
   updateDayProgress();
   renderTodos();
   renderMonthDow();
@@ -1233,7 +1516,7 @@ function clearCompleted() {
   // only once the undo window has closed.
   clearTimeout(_clearTimer);
   _clearTimer = setTimeout(() => {
-    done.forEach(t => t.calEventId && deleteCalendarEvent(t.calEventId, t.calAcct));
+    done.forEach(t => t.calEventId && deleteCalendarEvent(t.calEventId, t.calAcct, t.calId));
   }, 10000);
 }
 
@@ -1268,11 +1551,22 @@ function renderTodos() {
   const hit = t => !q || t.title.toLowerCase().includes(q) || (t.desc || '').toLowerCase().includes(q);
   const shown = sortTodos(open.filter(hit));
 
-  const linkHtml = t => !t.link ? '' : `<div class="task-link">${
-    isLocalPath(t.link)
-      ? `<button class="link-btn" onclick="revealTodoPath('${t.id}')" title="${escape(t.link)}"><span class="msym">folder_open</span> Open folder</button>`
-      : `<a href="${escape(t.link)}" target="_blank"><span class="msym">link</span> Open link</a>`
-  }</div>`;
+  // One chip per link. With several, "Open link" three times says nothing, so each is named by
+  // its host or folder; a lone link keeps the old wording.
+  const linkLabel = ({ title, url: l }, many) => {
+    if (title) return title;
+    if (!many) return isLocalPath(l) ? 'Open folder' : 'Open link';
+    if (isLocalPath(l)) return l.replace(/\/+$/, '').split('/').pop() || l;
+    try { return new URL(l).hostname.replace(/^www\./, ''); } catch { return l; }
+  };
+  const linkHtml = t => {
+    const links = linksOf(t);
+    if (!links.length) return '';
+    return `<div class="task-link">${links.map((l, i) => isLocalPath(l.url)
+      ? `<button class="link-btn" onclick="revealTodoPath('${t.id}', ${i})" title="${escape(l.url)}"><span class="msym">folder_open</span> ${escape(linkLabel(l, links.length > 1))}</button>`
+      : `<a href="${escape(l.url)}" target="_blank" title="${escape(l.url)}"><span class="msym">link</span> ${escape(linkLabel(l, links.length > 1))}</a>`
+    ).join('')}</div>`;
+  };
 
   const metaFor = (t, overdue) => {
     const days = daysUntil(t.deadline);
@@ -1280,14 +1574,21 @@ function renderTodos() {
       : days === 0 ? 'Due today!'
       : days < 0   ? `Overdue by ${Math.abs(days)} day${Math.abs(days)>1?'s':''}`
       : `${days} day${days>1?'s':''} left`;
-    return `${base}${t.calEventId?` · <span class="cal-tag">on calendar</span>`:''}`;
+    const course = t.courseEventId && _deadlines.find(e => e.id === t.courseEventId);
+    const rep = t.repeat ? ` · <span class="repeat-tag"><span class="msym">repeat</span>${t.repeat === 'monthly' ? 'monthly' : 'weekly'}</span>` : '';
+    return `${base}${rep}${t.calEventId?` · <span class="cal-tag">on calendar</span>`:''}${course
+      ? ` · <span class="course-tag"><span class="cal-swatch" style="background:${evColor(course)}"></span>${escape(course._calName || '')}</span>` : ''}`;
   };
 
+  // Manual order is the only order you can rearrange; dragging inside a sorted or filtered list
+  // would move rows that are not next to each other in the stored list.
+  const dragOK = _taskView.sort === 'manual' && !q;
   const item = t => {
     const days = daysUntil(t.deadline);
     const overdue = days !== null && days < 0;
     return `
-    <div class="task-row${overdue?' urgent':''}${t.priority?' flagged':''}">
+    <div class="task-row${overdue?' urgent':''}${t.priority?' flagged':''}${dragOK?' draggable':''}"${dragOK
+      ? ` draggable="true" ondragstart="taskDragStart('${t.id}',event)" ondragover="taskDragOver(event)" ondrop="taskDrop('${t.id}',event)" ondragend="taskDragEnd()"` : ''}>
       <button class="task-check${overdue?' overdue':''}" onclick="toggleTodoDone('${t.id}')" title="Mark done"></button>
       <div class="task-main">
         <div class="task-title">${escape(t.title)}</div>
@@ -1363,10 +1664,27 @@ function renderTodos() {
   }
 
   document.getElementById('todo-list').innerHTML = parts.join('');
+  if (_deadlines.length) drawDeadlineRows();
 }
 
 // The one alert that works with no permission and no setup. The reminders below can only
 // speak when the page is open anyway, so this is what actually stops a date being missed.
+let _dragId = null;
+function taskDragStart(id, ev) { _dragId = id; ev.dataTransfer.effectAllowed = 'move'; }
+function taskDragOver(ev) { if (_dragId) ev.preventDefault(); }
+function taskDragEnd() { _dragId = null; }
+function taskDrop(id, ev) {
+  ev.preventDefault();
+  if (!_dragId || _dragId === id) return;
+  const todos = getTodos();
+  const from = todos.findIndex(t => t.id === _dragId), to = todos.findIndex(t => t.id === id);
+  _dragId = null;
+  if (from < 0 || to < 0) return;
+  todos.splice(to, 0, ...todos.splice(from, 1));
+  putTodos(todos);
+  renderTodos();
+}
+
 function renderDueStrip(open) {
   const el = document.getElementById('todo-due');
   if (!el) return;
@@ -1391,6 +1709,45 @@ const DEADLINE_PIN_KEY = 'chris-dashboard-pinned-deadlines-v1';
 let pinnedDeadlines = new Set();
 try { pinnedDeadlines = new Set(JSON.parse(localStorage.getItem(DEADLINE_PIN_KEY)) || []); } catch {}
 
+// Deadlines already written to the calendar. The fetched events answer this for anything inside
+// the Find an Event range, but a deadline months out is past it — so each add is also remembered
+// here, which is what stops a second click duplicating one.
+const DEADLINE_ADDED_KEY = 'chris-dashboard-deadlines-on-calendar-v1';
+let addedDeadlines = new Set();
+try { addedDeadlines = new Set(JSON.parse(localStorage.getItem(DEADLINE_ADDED_KEY)) || []); } catch {}
+const rememberAdded = () => localStorage.setItem(DEADLINE_ADDED_KEY, JSON.stringify([...addedDeadlines]));
+
+// What createDeadlineEvent writes: the course name is in the title too, because on a calendar
+// "AFL 1 is due" on its own does not say which subject it belongs to.
+const deadlineEventName = e => `${e._calName ? e._calName + ' — ' : ''}${e.summary || 'Course deadline'}`;
+
+function deadlineOnCalendar(e) {
+  if (addedDeadlines.has(e.id)) return true;
+  const ymd = deadlineYmd(e);
+  // The second form is what was written before the course name was added — still a duplicate.
+  const want = [`📌 Deadline: ${deadlineEventName(e)}`, `📌 Deadline: ${e.summary || 'Course deadline'}`];
+  return _upcoming.some(g => !String(g.id).startsWith('moodle-')
+    && (g.start?.dateTime || g.start?.date || '').slice(0, 10) === ymd
+    && want.includes(g.summary || ''));
+}
+
+// Course deadlines marked as handed in. eLearn's calendar feed carries no submission status, so
+// this is by hand — kept on the server so its reminders stop for them too.
+let submittedDeadlines = new Set();
+const isDeadlineDone = e => submittedDeadlines.has(e.id)
+  || getTodos().some(t => t.courseEventId === e.id && t.doneAt);
+
+function toggleSubmitted(i) {
+  const e = _deadlineRows[i];
+  if (!e) return;
+  const was = submittedDeadlines.has(e.id);
+  was ? submittedDeadlines.delete(e.id) : submittedDeadlines.add(e.id);
+  drawDeadlineRows();
+  putReminders({ doneDeadlines: [...submittedDeadlines] })
+    .catch(() => showToast('Could not save that to the server', null, 5));
+  showToast(`"${shortTitle(deadlineTitle(e))}" ${was ? 'marked not submitted' : 'marked submitted'}`, () => toggleSubmitted(_deadlineRows.indexOf(e)), 6);
+}
+
 let _deadlines = [];      // as loaded
 let _deadlineRows = [];   // sorted the way the DOM draws them, so an index in a
                           // handler always resolves to the row you clicked
@@ -1410,23 +1767,32 @@ function deadlineRow(e, i) {
   const days = daysUntil(ymd);
   const overdue = days !== null && days < 0;
   const isPinned = pinnedDeadlines.has(e.id);
+  const task = getTodos().find(t => t.courseEventId === e.id);
+  const onCal = deadlineOnCalendar(e);
   const left = days === null ? '' : overdue ? `Overdue by ${Math.abs(days)} day${Math.abs(days) > 1 ? 's' : ''}`
     : days === 0 ? 'Due today' : `${days} day${days > 1 ? 's' : ''} left`;
   return `
-  <div class="task-row${overdue ? ' urgent' : ''}${isPinned ? ' pinned' : ''}">
+  <div class="task-row${isDeadlineDone(e) ? ' completed' : overdue ? ' urgent' : ''}${isPinned ? ' pinned' : ''}">
     <div class="task-main">
       <div class="task-title">${escape(e.summary || '(No title)')}</div>
       <div class="task-meta course-meta">
         <span class="cal-swatch" style="background:${evColor(e)}"></span>
         <span>${escape(e._calName || '')}${left ? ' · ' + left : ''}</span>
+        ${submittedDeadlines.has(e.id) ? '<span class="cal-tag">· submitted</span>'
+          : task ? `<span class="cal-tag">· ${task.doneAt ? 'task done' : 'in tasks'}</span>` : ''}
       </div>
     </div>
     ${dueChip(ymd)}
     <div class="task-actions">
+      <button onclick="toggleSubmitted(${i})" title="${submittedDeadlines.has(e.id) ? 'Mark not submitted' : 'Mark submitted'}"
+        ><span class="msym">${submittedDeadlines.has(e.id) ? 'check_circle' : 'task'}</span></button>
       <button onclick="toggleDeadlinePin(${i})" title="${isPinned ? 'Unpin' : 'Pin to top'}"
         ><span class="msym">${isPinned ? 'star' : 'star_border'}</span></button>
-      <button onclick="addDeadlineToCalendar(${i})" title="Add to Google Calendar"
-        ><span class="msym">calendar_add_on</span></button>
+      <button onclick="deadlineTask(${i})" title="${task ? 'Edit linked task' : 'Add to Tasks'}"
+        ><span class="msym">${task ? 'task_alt' : 'add_task'}</span></button>
+      <button onclick="addDeadlineToCalendar(${i})" ${onCal ? 'disabled' : ''}
+        title="${onCal ? 'Already on your calendar' : 'Add to Google Calendar'}"
+        ><span class="msym">${onCal ? 'event_available' : 'calendar_add_on'}</span></button>
     </div>
   </div>`;
 }
@@ -1435,7 +1801,16 @@ function deadlineRow(e, i) {
 // without another round-trip.
 function drawDeadlineRows() {
   const list = document.getElementById('deadline-list');
+  // Ticking a linked task re-renders the task list, which redraws these rows — so the count
+  // belongs here rather than in the loader, or it would stay stale until the next refresh.
+  document.getElementById('deadline-count').textContent =
+    _deadlines.filter(e => !isDeadlineDone(e)).length;
+  // Anything whose linked task is ticked off sinks to the bottom: it is still due, but it is
+  // not what the card is for any more.
+  const doneRank = e => isDeadlineDone(e) ? 1 : 0;
   _deadlineRows = _deadlines.slice().sort((a, b) => {
+    const da = doneRank(a), db = doneRank(b);
+    if (da !== db) return da - db;
     const pa = pinnedDeadlines.has(a.id) ? 0 : 1, pb = pinnedDeadlines.has(b.id) ? 0 : 1;
     if (pa !== pb) return pa - pb;
     const sa = a.start?.dateTime || a.start?.date || '', sb = b.start?.dateTime || b.start?.date || '';
@@ -1459,18 +1834,68 @@ function toggleDeadlinePin(i) {
 async function addDeadlineToCalendar(i) {
   const e = _deadlineRows[i];
   if (!e) return;
+  if (deadlineOnCalendar(e)) { showToast('That deadline is already on your calendar', null, 4); return; }
   const ymd = (e.start?.dateTime || e.start?.date || '').slice(0, 10);
-  const name = e.summary || 'Course deadline';
+  const name = deadlineEventName(e);
   const short = name.length > 28 ? name.slice(0, 28) + '…' : name;
   try {
-    const { id, acct } = await createDeadlineEvent(name, ymd);
+    const { id, acct, calId } = await createDeadlineEvent(name, ymd, deadlineHhmm(e) || _settings.deadlineTime);
+    addedDeadlines.add(e.id);
+    rememberAdded();
+    drawDeadlineRows();
     showToast(`Added "${short}" to your calendar`, () => {
-      deleteCalendarEvent(id, acct);
+      deleteCalendarEvent(id, acct, calId);
+      addedDeadlines.delete(e.id);
+      rememberAdded();
+      drawDeadlineRows();
       showToast('Removed from calendar', null, 4);
     }, 8);
   } catch (err) {
     showToast(`Couldn't add to calendar — ${err.message}`, null, 6);
   }
+}
+
+// Moodle titles read "AFL 1 is due"; the course chip already says whose it is.
+const deadlineTitle = e => (e.summary || 'Course deadline').replace(/ is due$/, '');
+const deadlineYmd = e => (e.start?.dateTime || e.start?.date || '').slice(0, 10);
+const deadlineHhmm = e => e.start?.dateTime ? formatTime(e.start.dateTime) : null;
+
+function deadlineTask(i) {
+  const e = _deadlineRows[i];
+  if (!e) return;
+  const linked = getTodos().find(t => t.courseEventId === e.id);
+  if (linked) return openEditModal(linked.id);
+  const id = Date.now().toString();
+  const title = deadlineTitle(e);
+  putTodos([...getTodos(), { id, title, desc: null, link: e.htmlLink ? linkLine({ title: 'eLearn', url: e.htmlLink }) : null, deadline: deadlineYmd(e), courseEventId: e.id }]);
+  renderTodos();
+  showToast(`Added "${shortTitle(title)}" to Tasks`, () => {
+    putTodos(getTodos().filter(t => t.id !== id));
+    renderTodos();
+    hideToast();
+  }, 6);
+}
+
+// A linked, still-open task follows its deadline when the course moves it.
+function syncLinkedDeadlines() {
+  const todos = getTodos();
+  let changed = false;
+  for (const t of todos) {
+    const e = !t.doneAt && t.courseEventId && _deadlines.find(e => e.id === t.courseEventId);
+    if (e && deadlineYmd(e) && t.deadline !== deadlineYmd(e)) { t.deadline = deadlineYmd(e); changed = true; }
+  }
+  if (changed) putTodos(todos);
+  renderTodos();
+}
+
+function onCourseLinkChange(id) {
+  const e = _deadlines.find(e => e.id === id);
+  if (!e) return;
+  const title = document.getElementById('todo-modal-title');
+  if (!title.value.trim()) title.value = deadlineTitle(e);
+  document.getElementById('todo-modal-deadline').value = deadlineText(deadlineYmd(e));
+  paintDeadlinePreview();
+  if (!getModalLinks().length && e.htmlLink) setModalLinks([{ title: 'eLearn', url: e.htmlLink }]);
 }
 
 async function renderDeadlines() {
@@ -1483,8 +1908,9 @@ async function renderDeadlines() {
   }
   try {
     _deadlines = await loadDeadlines();
-    count.textContent = _deadlines.length;
+    trackChanges('moodle', _deadlines, getDateKey(0), getDateKey(DEADLINE_DAYS));
     drawDeadlineRows();
+    syncLinkedDeadlines();
   } catch (err) {
     count.textContent = '!';
     list.innerHTML = `<div class="error">Could not load deadlines: ${escape(err.message)}</div>`;
@@ -1498,10 +1924,35 @@ async function renderDeadlines() {
 // The linked calendar event is deliberately left alone: ticking a checkbox should not quietly
 // delete something off your calendar. Deleting the task still cleans the event up, which is
 // where that was always meant to happen.
+// The next date of a repeating task, counted from its deadline (or today if it has none), so a
+// weekly task ticked off late still lands on its usual day rather than drifting.
+function nextRepeat(ymd, repeat) {
+  const base = new Date((ymd || getDateKey(0)) + 'T12:00:00Z');
+  const day = base.getUTCDate();   // kept, so the 31st does not decay into the 28th
+  do {
+    if (repeat !== 'monthly') { base.setUTCDate(base.getUTCDate() + 7); continue; }
+    base.setUTCDate(1);
+    base.setUTCMonth(base.getUTCMonth() + 1);
+    const last = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
+    base.setUTCDate(Math.min(day, last));   // a month without a 31st gets its last day
+  } while (base.toISOString().slice(0, 10) < getDateKey(0));
+  return base.toISOString().slice(0, 10);
+}
+
 function toggleTodoDone(id) {
   const todos = getTodos();
   const t = todos.find(x => x.id === id);
   if (!t) return;
+  if (t.repeat && !t.doneAt) {
+    const was = t.deadline;
+    t.deadline = nextRepeat(t.deadline, t.repeat);
+    t.snoozeUntil = null;
+    putTodos(todos);
+    renderTodos();
+    showToast(`"${shortTitle(t.title)}" done — next on ${whenLabel(t.deadline)}`,
+      () => { t.deadline = was; putTodos(getTodos()); renderTodos(); hideToast(); }, 6);
+    return;
+  }
   const wasDone = !!t.doneAt;
   t.doneAt = wasDone ? null : new Date().toISOString();
   putTodos(todos);
@@ -1532,7 +1983,7 @@ function removeTodo(id, verb = 'removed') {
   clearTimeout(_undoTimer);
   _undoTimer = setTimeout(() => {
     if (_undoStack?.todo?.calEventId) {
-      deleteCalendarEvent(_undoStack.todo.calEventId, _undoStack.todo.calAcct);
+      deleteCalendarEvent(_undoStack.todo.calEventId, _undoStack.todo.calAcct, _undoStack.todo.calId);
     }
     _undoStack = null;
     if (_toastSeq === myToast) hideToast();   // a newer toast owns the bar by now
@@ -1557,6 +2008,7 @@ function handleToastUndo() { if (_toastUndoFn) _toastUndoFn(); }
 // still the one on screen. With several actions now raising toasts, a stale 10s timer hiding
 // a newer message (and its Undo) stopped being hypothetical.
 let _toastSeq = 0;
+let _toastHideTimer = null;
 
 function showToast(msg, undoFn, sec = 10) {
   _toastSeq++;
@@ -1572,6 +2024,11 @@ function showToast(msg, undoFn, sec = 10) {
     bar.style.transition = `width ${sec}s linear`;
     bar.style.width = '0%';
   }));
+  // The bar only drew the countdown; nothing ever ended it, so every toast without its own
+  // timer stayed up for good. Guarded by the sequence number so a newer toast is not cut short.
+  const mine = _toastSeq;
+  clearTimeout(_toastHideTimer);
+  _toastHideTimer = setTimeout(() => { if (_toastSeq === mine) hideToast(); }, sec * 1000);
 }
 function hideToast() {
   document.getElementById('toast').classList.remove('show');
@@ -1582,30 +2039,79 @@ function hideToast() {
 let _saving = false;
 let _editingId = null;
 
-function _openModal(heading, saveLabel, title='', desc='', link='', deadline='', calChecked=false) {
+function _openModal(heading, saveLabel, title='', desc='', link='', deadline='', calChecked=false, courseEventId=null, repeat='') {
   _saving = false;
   document.getElementById('todo-modal-heading').textContent  = heading;
   document.getElementById('todo-modal-title').value          = title;
   document.getElementById('todo-modal-desc').value           = desc || '';
-  document.getElementById('todo-modal-link').value           = link || '';
-  document.getElementById('todo-modal-deadline').value       = deadline || '';
+  setModalLinks(linksOf({ link }));
+  document.getElementById('todo-modal-deadline').value       = deadlineText(deadline);
+  paintDeadlinePreview();
   document.getElementById('todo-modal-cal').checked          = calChecked;
+  document.getElementById('todo-modal-repeat').value         = repeat || '';
+  // A deadline that has left the feed (past, or the course dropped it) keeps its link.
+  const opts = _deadlines.slice().sort((a, b) => deadlineYmd(a).localeCompare(deadlineYmd(b)))
+    .map(e => [e.id, `${e._calName || 'Course'} · ${deadlineTitle(e)} · ${relDayLabel(deadlineYmd(e))}`]);
+  if (courseEventId && !opts.some(([id]) => id === courseEventId)) opts.unshift([courseEventId, 'Linked deadline (no longer in the feed)']);
+  const sel = document.getElementById('todo-modal-course');
+  sel.innerHTML = '<option value="">None</option>'
+    + opts.map(([id, label]) => `<option value="${escape(id)}">${escape(label)}</option>`).join('');
+  sel.value = courseEventId || '';
   document.getElementById('todo-modal-err').textContent      = '';
   document.getElementById('todo-save-btn').textContent       = saveLabel;
   document.getElementById('todo-overlay').classList.add('open');
   setTimeout(() => document.getElementById('todo-modal-title').focus(), 80);
 }
 
+// A typed deadline instead of <input type="date">: Safari's date field shows this month and year
+// in grey as a mere hint, so typing only the day saved nothing. Whatever is left out is filled
+// from today, rolling forward if that date has already passed ("5" on the 17th is next month's 5th).
+// Returns YYYY-MM-DD, '' for empty, or null when it is not a real date.
+function parseDeadline(v) {
+  v = String(v || '').trim();
+  if (!v) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const m = v.match(/^(\d{1,2})(?:\s*[\/.\- ]\s*(\d{1,2})(?:\s*[\/.\- ]\s*(\d{2}|\d{4}))?)?$/);
+  if (!m) return null;
+  const today = getDateKey(0);
+  let [y, mo] = today.split('-').map(Number);
+  const d = Number(m[1]);
+  if (m[2]) mo = Number(m[2]);
+  if (m[3]) y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+  const ymd = () => `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const real = () => { const dt = new Date(Date.UTC(y, mo - 1, d)); return dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d; };
+  if (!m[3] && m[2] && ymd() < today) y++;
+  // Day only: the next month that has that day ("31" in September is 31 October).
+  for (let i = 0; !m[2] && i < 3 && (!real() || ymd() < today); i++) {
+    if (++mo > 12) { mo = 1; y++; }
+  }
+  return real() ? ymd() : null;
+}
+const deadlineText = ymd => ymd ? ymd.split('-').reverse().map(Number).join('/') : '';
+
+function paintDeadlinePreview() {
+  const ymd = parseDeadline(document.getElementById('todo-modal-deadline').value);
+  const el = document.getElementById('todo-modal-deadline-preview');
+  el.classList.toggle('bad', ymd === null);
+  el.textContent = ymd === null ? 'Not a date. Try 20, 20/9 or 20/9/2026'
+    : ymd ? `${whenLabel(ymd)} ${ymd.slice(0, 4)} · ${daysUntil(ymd) === 0 ? 'today' : daysUntil(ymd) === 1 ? 'tomorrow' : `in ${daysUntil(ymd)} days`}`
+    : '';
+}
+
 function openTodoModal() {
   _editingId = null;
-  _openModal('New Task', 'Save Task');
+  // Everything here comes from Settings → New task defaults; the calendar tick does nothing
+  // unless a deadline is actually set (see saveTodo).
+  const days = _settings.newTaskDeadline;
+  _openModal('New Task', 'Save Task', '', '', '',
+    days === '' ? '' : getDateKey(Number(days)), _settings.newTaskCal, null, _settings.newTaskRepeat);
 }
 
 function openEditModal(id) {
   const t = getTodos().find(x => x.id === id);
   if (!t) return;
   _editingId = id;
-  _openModal('Edit Task', 'Update Task', t.title, t.desc, t.link, t.deadline, !!t.calEventId);
+  _openModal('Edit Task', 'Update Task', t.title, t.desc, t.link, t.deadline, !!t.calEventId, t.courseEventId, t.repeat);
 }
 
 function closeTodoModal() {
@@ -1614,17 +2120,30 @@ function closeTodoModal() {
   _editingId = null;
 }
 
+// A task made from a course deadline carries that course's name — and its real due time.
+const courseOf = id => (id && _deadlines.find(e => e.id === id)) || null;
+function calendarTitleFor(title, courseEventId) {
+  const course = courseOf(courseEventId);
+  return course?._calName ? `${course._calName} — ${title}` : title;
+}
+const calendarTimeFor = courseEventId =>
+  deadlineHhmm(courseOf(courseEventId) || {}) || _settings.deadlineTime;
+
 async function saveTodo() {
   if (_saving) return;
   const title    = document.getElementById('todo-modal-title').value.trim();
   const desc     = document.getElementById('todo-modal-desc').value.trim() || null;
-  const link     = cleanLink(document.getElementById('todo-modal-link').value);
-  const deadline = document.getElementById('todo-modal-deadline').value || null;
+  const link     = getModalLinks().map(linkLine).join('\n') || null;
+  const parsed   = parseDeadline(document.getElementById('todo-modal-deadline').value);
+  const deadline = parsed || null;
+  const courseEventId = document.getElementById('todo-modal-course').value || null;
+  const repeat = document.getElementById('todo-modal-repeat').value || null;
   const addCal   = document.getElementById('todo-modal-cal').checked && !!deadline;
   const errEl    = document.getElementById('todo-modal-err');
   const btn      = document.getElementById('todo-save-btn');
 
   if (!title) { errEl.textContent = 'Please enter a task title.'; return; }
+  if (parsed === null) { errEl.textContent = 'The deadline is not a date. Try 20, 20/9 or 20/9/2026.'; return; }
   errEl.textContent = '';
   _saving = true;
   btn.textContent = 'Saving…';
@@ -1639,12 +2158,15 @@ async function saveTodo() {
       t.desc     = desc;
       t.link     = link;
       t.deadline = deadline;
+      t.courseEventId = courseEventId;
+      t.repeat = repeat;
       // If cal was checked but no event yet, create one
       if (addCal && !t.calEventId && deadline) {
         try {
-          const ev = await createDeadlineEvent(title, deadline);
+          const ev = await createDeadlineEvent(calendarTitleFor(title, courseEventId), deadline, calendarTimeFor(courseEventId));
           t.calEventId = ev.id;
           t.calAcct = ev.acct;
+          t.calId = ev.calId;
         } catch(e) { errEl.textContent = 'Calendar error — other changes saved.'; }
       }
     }
@@ -1655,16 +2177,17 @@ async function saveTodo() {
   }
 
   // ── Add new ──
-  let calEventId = null, calAcct = null;
+  let calEventId = null, calAcct = null, calId = null;
   if (addCal) {
     try {
-      const ev = await createDeadlineEvent(title, deadline);
+      const ev = await createDeadlineEvent(calendarTitleFor(title, courseEventId), deadline, calendarTimeFor(courseEventId));
       calEventId = ev.id;
       calAcct = ev.acct;
+      calId = ev.calId;
     } catch(e) { errEl.textContent = 'Calendar error — task saved without it.'; }
   }
 
-  todos.push({ id: Date.now().toString(), title, desc, link, deadline, calEventId, calAcct, done: false });
+  todos.push({ id: Date.now().toString(), title, desc, link, deadline, calEventId, calAcct, calId, courseEventId, repeat, done: false });
   putTodos(todos);
   renderTodos();
   closeTodoModal();
@@ -1696,7 +2219,9 @@ async function reload() {
     return;
   }
   setLoading();
+  _evRegistry = {};   // fresh render, drop the previous keys — shared by every card that lists events
   await Promise.allSettled([
+    loadUpcoming(),
     // Picks up tasks added from outside the UI (e.g. an agent posting to /api/todos)
     loadTodos().then(renderTodos),
     loadEvents().catch(err => {
@@ -1709,80 +2234,239 @@ async function reload() {
 }
 
 // ─── Due reminders ────────────────────────────────────────────────
-// Opt-in, and deliberately so: the permission prompt is the consent, so nothing here can
-// start firing banners at you without a click. An unasked-for notification is the quickest
-// way to get every notification switched off.
-const REMIND_KEY  = 'chris-dashboard-reminders-v1';
-const REMINDED_KEY = 'chris-dashboard-reminded-v1';
-const remindersSupported = () => typeof Notification !== 'undefined';
-const remindersMuted = () => localStorage.getItem(REMIND_KEY) === 'off';
-const remindersOn = () => remindersSupported() && Notification.permission === 'granted' && !remindersMuted();
+// Opt-in: nothing fires until the bell is clicked. The server does the checking every 20
+// minutes and posts macOS notifications, so they arrive with the dashboard closed.
+const REMIND_KEY = 'chris-dashboard-reminders-v1';   // legacy page-side switch, migrated below
+let _remindersOn = false;
 
-let _reminded = {};
-try { _reminded = JSON.parse(localStorage.getItem(REMINDED_KEY)) || {}; } catch {}
+function putReminders(prefs) {
+  return api('/api/reminders', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(prefs),
+  });
+}
+
+async function loadReminders() {
+  try {
+    let r = await api('/api/reminders');
+    // Turned on back when the page did the checking: carry it over once.
+    if (!r.on && localStorage.getItem(REMIND_KEY) === 'on') r = await putReminders({ on: true, aheadDays: _settings.remindAheadDays });
+    localStorage.removeItem(REMIND_KEY);
+    _remindersOn = r.on;
+    submittedDeadlines = new Set(r.doneDeadlines || []);
+    if (_deadlines.length) drawDeadlineRows();
+    paintReminderBtn();
+    // First load after a restart: hand the server the reminders and hour it cannot read itself.
+    putReminders({ days: _dayReminders, dayHour: _settings.dayReminderHour, aheadDays: _settings.remindAheadDays }).catch(() => {});
+  } catch { /* server unreachable — the button just stays off */ }
+}
 
 function paintReminderBtn() {
   const btn = document.getElementById('reminder-btn');
   if (!btn) return;
-  const on = remindersOn();
-  btn.classList.toggle('on', on);
-  btn.querySelector('.msym').textContent = on ? 'notifications_active' : 'notifications_none';
-  btn.title = !remindersSupported() ? 'This browser cannot show notifications'
-    : on ? 'Reminders on — click to mute'
-    : 'Remind me about tasks that are due';
+  btn.classList.toggle('on', _remindersOn);
+  btn.querySelector('.msym').textContent = _remindersOn ? 'notifications_active' : 'notifications_none';
+  btn.title = _remindersOn ? 'Reminders on — click to mute' : 'Remind me about tasks that are due';
 }
 
 async function toggleReminders() {
-  if (!remindersSupported()) { showToast('This browser cannot show notifications', null, 5); return; }
-  if (remindersOn()) {
-    // Muting only stops this page reminding. The permission itself belongs to the browser,
-    // so pretending we can hand it back would be a lie.
-    localStorage.setItem(REMIND_KEY, 'off');
-    paintReminderBtn();
-    showToast('Reminders muted', null, 4);
-    return;
-  }
-  if (Notification.permission !== 'granted') {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { showToast('Reminders need notification permission', null, 5); return; }
-  }
-  localStorage.setItem(REMIND_KEY, 'on');
+  try {
+    const r = await putReminders({ on: !_remindersOn, aheadDays: _settings.remindAheadDays });
+    _remindersOn = r.on;
+  } catch (err) { showToast(`Could not change reminders — ${err.message}`, null, 6); return; }
   paintReminderBtn();
-  showToast('Reminders on — you will hear about tasks due today', null, 4);
-  checkDueReminders();
+  showToast(_remindersOn
+    ? 'Reminders on, even with the dashboard closed. No banner? Allow "Script Editor" in System Settings → Notifications.'
+    : 'Reminders muted', null, _remindersOn ? 10 : 4);
 }
 
-// At most one notification per task per day. The marker is a date rather than a flag so that
-// a task still sitting overdue tomorrow nudges again, which is the whole point of it.
-function checkDueReminders() {
-  if (!remindersOn()) return;
-  const today = getDateKey(0);
-  const due = getTodos().filter(t => !t.doneAt && t.deadline && !isSnoozed(t)
-    && daysUntil(t.deadline) <= _settings.remindAheadDays);
-  const fresh = due.filter(t => _reminded[t.id] !== today);
+// ─── Notifications ────────────────────────────────────────────────
+// Calendars give no "what changed" feed that covers Moodle too, so each load is compared with
+// the previous one's snapshot. Kept in localStorage: it only means anything to this browser.
+const NOTIF_KEY = 'chris-dashboard-notifications-v1';
+const SNAP_KEY  = 'chris-dashboard-event-snapshot-v1-';
+const MAX_NOTIFS = 100;
+let _notifs = [];
+try { _notifs = JSON.parse(localStorage.getItem(NOTIF_KEY)) || []; } catch {}
+const saveNotifs = () => localStorage.setItem(NOTIF_KEY, JSON.stringify(_notifs));
+
+// Absolute rather than "Tomorrow": the notification outlives the day it was written.
+function whenLabel(t) {
+  const allDay = t.length <= 10;
+  return new Date(allDay ? t + 'T12:00:00+08:00' : t)
+    .toLocaleDateString('en-ID', { weekday:'short', day:'numeric', month:'short', timeZone: TZ })
+    + (allDay ? '' : ' ' + formatTime(t));
+}
+
+function agoLabel(iso) {
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : doneAgo(iso);
+}
+
+// ponytail: capped at 50 events per calendar by fetchRange; a calendar busier than that in
+// the window can report phantom adds/removals at the cut. Raise maxResults if that happens.
+function trackChanges(scope, events, startYmd, endYmd) {
+  const cals = accounts.flatMap(a => shownCalendars(a).map(c => calKey(a.email, c.id)));
+  const ev = {};
+  for (const e of events) {
+    ev[e.id] = { s: e.summary || '(No title)', t: e.start?.dateTime || e.start?.date || '', c: calKey(e._acct, e._calId) };
+  }
+  let prev = null;
+  try { prev = JSON.parse(localStorage.getItem(SNAP_KEY + scope)); } catch {}
+  localStorage.setItem(SNAP_KEY + scope, JSON.stringify({ end: endYmd, cals, ev }));
+  if (!prev) return;   // first look: everything would be "added", which tells you nothing
+
+  const oldCals = new Set(prev.cals), nowCals = new Set(cals);
+  const found = [];
+  for (const [id, n] of Object.entries(ev)) {
+    const o = prev.ev[id];
+    if (!o) {
+      // Unseen is not the same as new: the window slid forward onto it, or its calendar
+      // was only just switched on.
+      if (n.t.slice(0, 10) <= prev.end && oldCals.has(n.c)) found.push({ kind: 'added', title: n.s, detail: whenLabel(n.t), eventId: id });
+    } else if (o.t !== n.t) {
+      found.push({ kind: 'updated', title: n.s, detail: `Moved from ${whenLabel(o.t)} to ${whenLabel(n.t)}` });
+    } else if (o.s !== n.s) {
+      found.push({ kind: 'updated', title: n.s, detail: `Renamed from "${o.s}"` });
+    }
+  }
+  for (const [id, o] of Object.entries(prev.ev)) {
+    const ymd = o.t.slice(0, 10);
+    // Likewise gone is not deleted: it may have slid out of the window or been hidden.
+    if (!ev[id] && ymd >= startYmd && ymd <= endYmd && nowCals.has(o.c)) {
+      found.push({ kind: 'removed', title: o.s, detail: whenLabel(o.t) });
+    }
+  }
+  if (scope === 'moodle' && _settings.autoTaskDeadlines) autoTaskDeadlines(found);
+  if (!found.length) return;
+  const at = new Date().toISOString();
+  _notifs = [...found.map(f => ({ ...f, id: at + Math.random().toString(36).slice(2, 7), at, read: false })), ..._notifs]
+    .slice(0, MAX_NOTIFS);
+  saveNotifs();
+  renderNotifs();
+}
+
+// Optional (Settings): a deadline the course only just posted becomes a task by itself.
+function autoTaskDeadlines(found) {
+  const added = found.filter(f => f.kind === 'added' && f.eventId);
+  if (!added.length) return;
+  const todos = getTodos();
+  const fresh = added.filter(f => !todos.some(t => t.courseEventId === f.eventId));
   if (!fresh.length) return;
+  for (const f of fresh) {
+    const e = _deadlines.find(e => e.id === f.eventId);
+    todos.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), title: deadlineTitle(e || { summary: f.title }),
+                 desc: null, link: e?.htmlLink ? linkLine({ title: 'eLearn', url: e.htmlLink }) : null, deadline: e ? deadlineYmd(e) : null, courseEventId: f.eventId });
+  }
+  putTodos(todos);
+  renderTodos();
+  showToast(`${fresh.length} new course deadline${fresh.length > 1 ? 's' : ''} added to Tasks`, null, 6);
+}
 
-  const next = {};
-  due.forEach(t => { next[t.id] = today; });
-  _reminded = next;                      // rebuilt from today's due list, so it cannot grow forever
-  localStorage.setItem(REMINDED_KEY, JSON.stringify(_reminded));
-
-  const lines = fresh.map(t => {
-    const d = daysUntil(t.deadline);
-    const when = d < 0 ? 'Overdue' : d === 0 ? 'Due today' : `Due in ${d} day${d > 1 ? 's' : ''}`;
-    return `${when}: ${t.title}`;
+function renderNotifs() {
+  const unread = _notifs.filter(n => !n.read).length;
+  document.querySelectorAll('.notif-badge').forEach(b => {
+    b.textContent = unread > 99 ? '99+' : unread;
+    b.hidden = !unread;
   });
-  try {
-    new Notification(fresh.length === 1 ? 'A task needs you' : `${fresh.length} tasks need you`,
-      { body: lines.slice(0, 5).join('\n'), tag: 'attention-dashboard-' + today });
-  } catch { /* some platforms refuse construction outright — the due strip still shows it */ }
+  document.getElementById('notif-list').innerHTML = _notifs.length
+    ? _notifs.map(n => `
+      <div class="notif-row${n.read ? ' read' : ''}">
+        <span class="notif-kind ${n.kind}">${n.kind}</span>
+        <div class="notif-main">
+          <div class="notif-title">${escape(n.title)}</div>
+          <div class="notif-detail">${escape(n.detail)} · ${agoLabel(n.at)}</div>
+        </div>
+        ${n.read ? '' : `<button class="icon-btn" title="Mark read" onclick="markNotifRead('${n.id}')"><span class="msym">check</span></button>`}
+      </div>`).join('')
+    : '<div class="empty">Nothing new. Added, moved and removed events show up here.</div>';
+}
+
+function toggleNotifs() {
+  const panel = document.getElementById('notif-panel');
+  if (panel.classList.toggle('open')) renderNotifs();   // refreshes the "5m ago" labels
+}
+// Click anywhere else closes it, like any other dropdown.
+document.addEventListener('click', e => {
+  // composedPath, not target.closest: "mark read" re-renders the list, detaching the clicked button.
+  const inside = e.composedPath().some(el => el.id === 'notif-panel' || el.classList?.contains('notif-btn'));
+  if (!inside) document.getElementById('notif-panel').classList.remove('open');
+});
+
+function markNotifRead(id) {
+  const n = _notifs.find(n => n.id === id);
+  if (n) n.read = true;
+  saveNotifs(); renderNotifs();
+}
+function markAllNotifsRead() { _notifs.forEach(n => { n.read = true; }); saveNotifs(); renderNotifs(); }
+function clearReadNotifs()   { _notifs = _notifs.filter(n => !n.read); saveNotifs(); renderNotifs(); }
+
+// ─── Day reminders ────────────────────────────────────────────────
+// `day` is a weekday "0"–"6" (every week) or a YYYY-MM-DD (once).
+const DAY_REMINDERS_KEY = 'chris-dashboard-day-reminders-v1';
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+let _dayReminders = [];
+try { _dayReminders = JSON.parse(localStorage.getItem(DAY_REMINDERS_KEY)) || []; } catch {}
+_dayReminders = _dayReminders.filter(r => r.day.length === 1 || r.day >= getDateKey(0));   // drop past one-offs
+const saveDayReminders = () => {
+  localStorage.setItem(DAY_REMINDERS_KEY, JSON.stringify(_dayReminders));
+  putReminders({ days: _dayReminders }).catch(() => {});   // the server sends them in the morning
+};
+
+// Noon at +08:00 is 04:00 UTC the same date, so getUTCDay is the weekday in TZ.
+const weekdayOf = ymd => new Date(ymd + 'T12:00:00+08:00').getUTCDay();
+const remindersFor = ymd => _dayReminders.filter(r => r.day === ymd || r.day === String(weekdayOf(ymd)));
+const reminderDayLabel = day => day.length === 1 ? `Every ${WEEKDAYS[day]}` : whenLabel(day);
+
+function renderDayStrip() {
+  const today = remindersFor(getDateKey(0)), tomorrow = remindersFor(getDateKey(1));
+  const el = document.getElementById('day-strip');
+  el.hidden = !today.length && !tomorrow.length;
+  el.innerHTML = `<span class="msym">push_pin</span>`
+    + (today.length ? `<strong>${WEEKDAYS[weekdayOf(getDateKey(0))]}</strong>`
+        + today.map(r => `<span class="day-chip">${escape(r.text)}</span>`).join('') : '')
+    + (tomorrow.length ? `<span class="day-strip-next">Tomorrow</span>`
+        + tomorrow.map(r => `<span class="day-chip next">${escape(r.text)}</span>`).join('') : '');
+}
+
+function renderDayReminderSettings() {
+  document.getElementById('dr-list').innerHTML = _dayReminders.length
+    ? _dayReminders.map(r => `
+      <div class="dr-row">
+        <span class="dr-day">${reminderDayLabel(r.day)}</span>
+        <span class="dr-text">${escape(r.text)}</span>
+        <button class="icon-btn" title="Delete reminder" onclick="removeDayReminder('${r.id}')"><span class="msym">close</span></button>
+      </div>`).join('')
+    : '<div class="settings-hint">No reminders yet.</div>';
+}
+
+function addDayReminder() {
+  const sel = document.getElementById('dr-day').value;
+  const day = sel === 'date' ? document.getElementById('dr-date').value : sel;
+  const textEl = document.getElementById('dr-text');
+  const text = textEl.value.trim();
+  if (!text) { textEl.focus(); return; }
+  if (!day) { showToast('Pick a date for the reminder', null, 4); return; }
+  if (day.length > 1 && day < getDateKey(0)) { showToast('That date has already passed', null, 4); return; }
+  _dayReminders.push({ id: Date.now().toString(36), day, text });
+  saveDayReminders();
+  textEl.value = '';
+  renderDayReminderSettings();
+  renderDayStrip();
+}
+
+function removeDayReminder(id) {
+  _dayReminders = _dayReminders.filter(r => r.id !== id);
+  saveDayReminders();
+  renderDayReminderSettings();
+  renderDayStrip();
 }
 
 // ─── Init ─────────────────────────────────────────────────────────
 setGreeting();
 startClock();
 updateDayProgress();
-setInterval(updateDayProgress, 60000);
+setInterval(() => { updateDayProgress(); tickNowLines(); }, 60000);
 loadTodos().then(renderTodos);
 restoreAccounts();
 
@@ -1793,6 +2477,10 @@ document.getElementById('todo-search').value = _taskView.q;
 document.getElementById('todo-sort').value = _taskView.sort;
 if (_taskView.q) document.getElementById('todo-search').focus();
 paintReminderBtn();
+document.documentElement.style.setProperty('--nowline-alpha', String(_settings.nowLineAlpha));
+renderNotifs();
+renderDayStrip();
+setInterval(renderDayStrip, 60000);          // rolls over at midnight
+setInterval(reload, 10 * 60 * 1000);         // so calendar changes reach the notifications unasked
 paintSettings();          // reflects the stored window onto the donut's tooltip
-checkDueReminders();
-setInterval(checkDueReminders, 5 * 60 * 1000);
+loadReminders();

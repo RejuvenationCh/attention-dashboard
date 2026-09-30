@@ -441,7 +441,7 @@ main {
   color: #f6f7f9; padding: 10px 14px 10px 16px; border-radius: 12px;
   border: 1px solid rgba(255,255,255,0.1);
   font-size: 12px; display: flex; align-items: center; gap: 12px; z-index: 60;
-  opacity: 0; transition: opacity 0.2s ease; pointer-events: none; white-space: nowrap;
+  opacity: 0; transition: opacity 0.2s ease; pointer-events: none; width: max-content; max-width: min(460px, calc(100vw - 32px));
   box-shadow: 0 8px 24px rgba(0,0,0,0.3); overflow: hidden;
 }
 .toast.show { opacity: 1; pointer-events: auto; }
@@ -655,7 +655,7 @@ main {
   padding: 11px 0;
 }
 .settings-row + .settings-row { border-top: 1px solid rgba(0,0,0,0.06); }
-.settings-label { font-size: 13px; font-weight: 600; color: var(--ink); min-width: 0; }
+.settings-label { font-size: 13px; font-weight: 600; color: var(--ink); min-width: 0; flex: 1; }
 .settings-hint {
   display: block; font-size: 11px; font-weight: 400; line-height: 1.45;
   color: var(--ink-2); margin-top: 2px;
@@ -663,8 +663,124 @@ main {
 /* Fixed widths, so the controls line up down the right-hand edge instead of every row
    ending somewhere different. */
 .settings-row .todo-input, .settings-row .task-sort { flex: none; margin-bottom: 0; }
+/* Calendar names run long; without a cap the select pushes its own label into a sliver. */
+#settings-writecal { width: 210px; }
 .settings-num  { width: 74px; text-align: center; }
 .settings-text { width: 122px; }
 .settings-pair { display: flex; align-items: center; gap: 7px; flex: none; font-size: 12px; color: var(--ink-2); }
 .settings-pair .settings-num { width: 62px; }
 .settings-modal .todo-btn-row { margin-top: 18px; }
+
+/* ── Notifications ── */
+.notif-btn { position: relative; }
+.notif-badge {
+  position: absolute; top: -5px; right: -7px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; background: var(--error); color: #fff;
+  font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums;
+}
+.dock .notif-badge { top: 2px; right: 2px; }
+.notif-badge[hidden] { display: none; }
+.notif-panel {
+  position: fixed; top: 56px; right: 16px; z-index: 57; display: none;
+  width: min(380px, calc(100vw - 32px)); max-height: min(520px, calc(100vh - 80px)); overflow-y: auto;
+  background: rgba(255,255,255,0.96); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--line); border-radius: 14px; padding: 14px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+}
+.notif-panel.open { display: block; }
+.notif-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.notif-head .todo-modal-heading { margin-right: auto; }
+.notif-head .text-btn { font-size: 12px; }
+.notif-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; }
+.notif-row + .notif-row { border-top: 1px solid rgba(0,0,0,0.06); }
+.notif-row.read { opacity: 0.55; }
+.notif-main { flex: 1; min-width: 0; }
+.notif-title { font-size: 13px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.notif-detail { font-size: 11px; color: var(--ink-2); margin-top: 2px; }
+.notif-kind {
+  flex: none; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  border-radius: 6px; padding: 2px 6px; margin-top: 1px; width: 62px; text-align: center;
+}
+.notif-kind.added   { background: rgba(13,148,136,0.12); color: var(--teal); }
+.notif-kind.updated { background: rgba(59,130,246,0.12); color: var(--primary-deep); }
+.notif-kind.removed { background: rgba(186,26,26,0.1);   color: var(--error); }
+@media (max-width: 900px) {
+  /* The header is gone at this width, so the panel opens from the dock instead. */
+  .notif-panel { top: auto; bottom: 76px; left: 16px; right: 16px; width: auto; }
+}
+
+/* ── Day reminders ── */
+.day-strip {
+  grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 10px 16px; border-radius: 12px; font-size: 13px; color: var(--ink);
+  background: rgba(183,91,0,0.08); border: 1px solid rgba(183,91,0,0.18);
+}
+.day-strip[hidden] { display: none; }
+.day-strip .msym { font-size: 18px; color: var(--amber-accent); }
+.day-chip { background: #fff; border-radius: 999px; padding: 3px 11px; font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.day-chip.next { background: rgba(255,255,255,0.5); color: var(--ink-2); box-shadow: none; }
+.day-strip-next { margin-left: 8px; font-size: 12px; color: var(--ink-3); }
+.settings-row.dr-section { flex-direction: column; align-items: stretch; gap: 8px; }
+.dr-row { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 4px 0; }
+.dr-day { flex: none; width: 130px; color: var(--ink-2); font-size: 12px; }
+.dr-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dr-add { display: flex; flex-wrap: wrap; gap: 6px; }
+.dr-add #dr-text { flex: 1 1 140px; width: auto; }
+.dr-add .todo-btn { flex: none; padding: 8px 14px; }
+.dr-add #dr-date { width: auto; }
+.cal-rename { margin-left: auto; flex: none; display: flex; background: none; border: none; padding: 0; cursor: pointer; color: var(--ink-3); opacity: 0; }
+.cal-item:hover .cal-rename, .cal-rename:focus-visible { opacity: 1; }
+.cal-rename:hover { color: var(--primary); }
+.cal-rename .msym { font-size: 14px; }
+@media (hover: none) { .cal-rename { opacity: 1; } }
+.course-tag { display: inline-flex; align-items: center; gap: 4px; }
+input.todo-input { resize: none; }   /* Safari draws a resize grip on date inputs */
+.deadline-input { margin-bottom: 4px; }
+.deadline-preview { font-size: 12px; color: var(--primary-deep); min-height: 16px; margin-bottom: 12px; }
+.deadline-preview.bad { color: var(--error); }
+.repeat-tag { display: inline-flex; align-items: center; gap: 2px; color: var(--ink-3); }
+.repeat-tag .msym { font-size: 13px; }
+.settings-check { width: 17px; height: 17px; accent-color: var(--primary); flex: none; }
+.task-row.draggable { cursor: grab; }
+.task-row.draggable:active { cursor: grabbing; }
+.cal-busy { flex: none; display: flex; background: none; border: none; padding: 0; cursor: pointer; color: var(--ink-3); opacity: 0; }
+.cal-rename + .cal-busy, .cal-name + .cal-busy { margin-left: auto; }
+.cal-rename + .cal-busy { margin-left: 4px; }
+.cal-item:hover .cal-busy, .cal-busy.off, .cal-busy:focus-visible { opacity: 1; }
+.cal-busy.off { color: var(--amber-accent); }
+.cal-busy .msym { font-size: 14px; }
+@media (hover: none) { .cal-busy { opacity: 1; } }
+.tl-live { color: var(--primary-deep); font-weight: 600; }
+/* Where the clock has reached inside an event that is running. Only a faint rule across the
+   row: it slips behind the card, so it marks the time without landing on any text. The element
+   inside the card is invisible — it exists to measure the height the rule sits at. */
+.tl-card { position: relative; }
+.tl-now { position: absolute; left: 0; top: 0; width: 0; pointer-events: none; }
+.tl-nowbar { position: absolute; left: -46px; right: 0; height: 1px; background: rgba(0,0,0,var(--nowline-alpha, 0.09)); z-index: 0; pointer-events: none; }
+.settings-pair input[type=range] { width: 120px; accent-color: var(--primary); }
+.settings-num-label { font-size: 12px; color: var(--ink-2); width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+.tl-end { display: block; font-size: 10px; color: var(--ink-3); opacity: 0.7; }
+.settings-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex: none; }
+.settings-inline { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); }
+.settings-inline .task-sort { flex: none; }
+.toast-close { background: none; border: none; color: #c9ccd4; cursor: pointer; padding: 0; display: flex; flex: none; }
+.toast-close:hover { color: #fff; }
+.toast-close .msym { font-size: 16px; }
+.events-card { padding: 18px 20px; }
+.events-card .card-h2 .msym { font-size: 20px; color: var(--primary); }
+.events-card .task-tools { margin-bottom: 4px; }
+.events-card .task-title a { color: inherit; text-decoration: none; }
+.events-card .task-title a:hover { text-decoration: underline; }
+.events-card #upcoming-list { max-height: 420px; overflow-y: auto; }
+.cal-pick-btn { cursor: pointer; text-align: left; }
+.cal-pick { background: rgba(255,255,255,0.5); border: 1px solid var(--line); border-radius: 10px; margin: 8px 0 4px; padding: 8px 10px; }
+.cal-pick[hidden] { display: none; }
+.cal-pick-actions { grid-column: 1 / -1; display: flex; gap: 12px; padding-top: 6px; }
+.cal-pick-actions .text-btn { font-size: 12px; }
+.task-actions button:disabled { opacity: 0.45; cursor: default; }
+.link-row + .link-row { margin-top: -4px; }
+.link-row .link-remove { flex: none; margin-top: 6px; }
+.add-link-btn { font-size: 12px; margin: -4px 0 12px; }
+.task-link { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.link-row .todo-link-name { flex: 0 0 130px; }
+@media (max-width: 520px) { .link-row { flex-wrap: wrap; } .link-row .todo-link-name { flex-basis: 100%; margin-bottom: -4px; } }
