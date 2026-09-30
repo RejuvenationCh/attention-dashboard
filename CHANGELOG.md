@@ -3,6 +3,10 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.4.2 (1 October 2026)
+
+- Settings no longer shows an **Install** button when you already have the latest version.
+
 ## 1.4.1 (30 September 2026)
 
 - eLearn courses no longer carry a "Class" tag in the Accounts card. Calendar types are for

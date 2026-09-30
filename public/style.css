@@ -1,6 +1,10 @@
 /* macOS-glass design system
    Windows 16px · panels/cards 12px · chips 8px · dock buttons 12px.
    One accent (#3b82f6); amber = next-event/deadline-soon; red = overdue. */
+/* Any display rule (.text-btn is flex, for one) beats the browser's own [hidden] style, so
+   elements the script hides stayed on screen. One rule here instead of one per element. */
+[hidden] { display: none !important; }
+
 :root {
   --primary: #3b82f6;
   --primary-deep: #2170e4;
@@ -710,7 +714,6 @@ main {
   font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums;
 }
 .dock .notif-badge { top: 2px; right: 2px; }
-.notif-badge[hidden] { display: none; }
 .notif-panel {
   position: fixed; top: 56px; right: 16px; z-index: 57; display: none;
   width: min(380px, calc(100vw - 32px)); max-height: min(520px, calc(100vh - 80px)); overflow-y: auto;
@@ -746,7 +749,6 @@ main {
   padding: 10px 16px; border-radius: 12px; font-size: 13px; color: var(--ink);
   background: rgba(183,91,0,0.08); border: 1px solid rgba(183,91,0,0.18);
 }
-.day-strip[hidden] { display: none; }
 .day-strip .msym { font-size: 18px; color: var(--amber-accent); }
 .day-chip { background: #fff; border-radius: 999px; padding: 3px 11px; font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 .day-chip.next { background: rgba(255,255,255,0.5); color: var(--ink-2); box-shadow: none; }
@@ -805,7 +807,6 @@ input.todo-input { resize: none; }   /* Safari draws a resize grip on date input
 .events-card #upcoming-list { max-height: 420px; overflow-y: auto; }
 .cal-pick-btn { cursor: pointer; text-align: left; }
 .cal-pick { background: rgba(255,255,255,0.5); border: 1px solid var(--line); border-radius: 10px; margin: 8px 0 4px; padding: 8px 10px; }
-.cal-pick[hidden] { display: none; }
 .cal-pick-actions { grid-column: 1 / -1; display: flex; gap: 12px; padding-top: 6px; }
 .cal-pick-actions .text-btn { font-size: 12px; }
 .task-actions button:disabled { opacity: 0.45; cursor: default; }
