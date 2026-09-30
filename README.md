@@ -157,9 +157,12 @@ purpose, so connect Google and paste the eLearn link again.
 
 ## Appearance and shortcuts
 
-**Settings → Appearance** has a light and dark theme (or follow your computer), an accent
-colour, and **Reduce effects**, which turns off the glass blur and animations on slower
-computers.
+**Settings → Appearance** has:
+
+- a light and dark theme (or follow your computer) and an accent colour
+- **Show**: which cards appear on the dashboard (Tasks and Accounts always do)
+- a 12-hour or 24-hour **Clock**, a **Text size**, and **Compact spacing**
+- **Reduce effects**, which turns off the glass blur and animations on slower computers
 
 Press **?** anywhere for the keyboard shortcuts: **N** new task, **/** search tasks, **T** today,
 **M** month, **R** refresh, **,** Settings, **Esc** to close.

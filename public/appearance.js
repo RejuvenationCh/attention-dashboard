@@ -10,9 +10,12 @@
     amber:  ['#d97706', '#b45309', '217,119,6'],
   };
   const dark = matchMedia('(prefers-color-scheme: dark)');
+  // size: page zoom · compact: tighter spacing · clock: '24' | '12' · hide: cards switched off
+  const DEFAULTS = { theme: 'system', accent: 'blue', reduce: false, size: '1', compact: false, clock: '24', hide: [] };
+  const CARDS = ['ring', 'tiles', 'courses', 'schedule', 'search', 'week'];
   const read = () => {
-    try { return { theme: 'system', accent: 'blue', reduce: false, ...JSON.parse(localStorage.getItem(KEY)) }; }
-    catch { return { theme: 'system', accent: 'blue', reduce: false }; }
+    try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY)) }; }
+    catch { return { ...DEFAULTS }; }
   };
   function apply(a = read()) {
     const root = document.documentElement;
@@ -22,6 +25,10 @@
     root.style.setProperty('--primary-deep', deep);
     root.style.setProperty('--a', rgb);
     root.classList.toggle('reduce-effects', !!a.reduce);
+    root.classList.toggle('compact', !!a.compact);
+    root.classList.toggle('clock12', a.clock === '12');
+    root.style.setProperty('--zoom', String(Number(a.size) || 1));
+    for (const c of CARDS) root.classList.toggle('hide-' + c, (a.hide || []).includes(c));
   }
   function save(a) {
     try { localStorage.setItem(KEY, JSON.stringify(a)); } catch {}
@@ -29,5 +36,5 @@
   }
   dark.addEventListener('change', () => apply());   // "System" follows the OS live
   apply();
-  window.appearance = { read, save, apply };
+  window.appearance = { read, save, apply, CARDS };
 })();

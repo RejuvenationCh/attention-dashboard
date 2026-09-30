@@ -282,9 +282,21 @@ async function renameCourse(ai, ci) {
 }
 
 // Utilities
+// Every clock time on the page goes through here, so Settings → Appearance → Clock reaches all.
+const clockOpts = (seconds = false) => window.appearance.read().clock === '12'
+  ? { hour: 'numeric', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}), hour12: true, timeZone: TZ }
+  : { hour: '2-digit', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}), hour12: false, timeZone: TZ };
+const clockTime = (d, seconds) => new Date(d).toLocaleTimeString(window.appearance.read().clock === '12' ? 'en-US' : 'en-GB', clockOpts(seconds));
 function formatTime(dt) {
   if (!dt) return 'All day';
-  return new Date(dt).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', timeZone: TZ });
+  return clockTime(dt);
+}
+// The schedule's narrow time column: "6pm", "7:30am" in 12-hour mode, as usual in 24-hour.
+function clockShort(dt) {
+  if (window.appearance.read().clock !== '12') return clockTime(dt);
+  const d = new Date(dt), h = Number(d.toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: TZ }));
+  const m = d.toLocaleString('en-GB', { minute: '2-digit', timeZone: TZ }).padStart(2, '0');
+  return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h < 12 ? 'am' : 'pm'}`;
 }
 function msToTime(ms) { return formatTime(new Date(ms).toISOString()); }
 function isHappening(s, e) { const n = Date.now(); return new Date(s) <= n && new Date(e) >= n; }
@@ -388,13 +400,24 @@ function paintAppearance() {
   document.getElementById('settings-theme').value = a.theme;
   document.getElementById('settings-accent').value = a.accent;
   document.getElementById('settings-reduce').checked = !!a.reduce;
+  document.getElementById('settings-size').value = String(a.size);
+  document.getElementById('settings-compact').checked = !!a.compact;
+  document.getElementById('settings-clock').value = a.clock;
+  document.querySelectorAll('[data-card]').forEach(c => { c.checked = !(a.hide || []).includes(c.dataset.card); });
 }
 function appearanceChanged() {
+  const clockWas = window.appearance.read().clock;
   window.appearance.save({
     theme: document.getElementById('settings-theme').value,
     accent: document.getElementById('settings-accent').value,
     reduce: document.getElementById('settings-reduce').checked,
+    size: document.getElementById('settings-size').value,
+    compact: document.getElementById('settings-compact').checked,
+    clock: document.getElementById('settings-clock').value,
+    hide: [...document.querySelectorAll('[data-card]')].filter(c => !c.checked).map(c => c.dataset.card),
   });
+  // Times are written into the cards as they render, so a new clock format needs a redraw.
+  if (window.appearance.read().clock !== clockWas) { reload(); paintSettings(); }
 }
 
 // Settings: the version line, what's new in an available update, and the Install button.
@@ -752,7 +775,10 @@ function startClock() {
   function tick() {
     const now = new Date();
     document.getElementById('clock-time').textContent =
-      now.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit', timeZone: TZ });
+      clockTime(now, true);
+    // 12-hour: AM/PM set smaller after the seconds, so the tile does not cut it off.
+    const t = document.getElementById('clock-time');
+    t.innerHTML = t.textContent.replace(/\s?(AM|PM)$/i, '<small class="clock-ampm">$1</small>');
     document.getElementById('clock-day').textContent =
       now.toLocaleDateString('en-ID', { weekday:'long', timeZone: TZ }) + ' · ' + TZ_LABEL;
   }
@@ -1065,8 +1091,8 @@ function renderTlEvent(e, isToday) {
   _evRegistry[key] = e;
   return `
   <div class="tl-event" id="${key}">
-    <div class="tl-time${now_ ? ' now' : ''}">${formatTime(e.start?.dateTime)}${
-      e.start?.dateTime && e.end?.dateTime ? `<span class="tl-end">${formatTime(e.end.dateTime)}</span>` : ''}</div>
+    <div class="tl-time${now_ ? ' now' : ''}">${e.start?.dateTime ? clockShort(e.start.dateTime) : 'All day'}${
+      e.start?.dateTime && e.end?.dateTime ? `<span class="tl-end">${clockShort(e.end.dateTime)}</span>` : ''}</div>
     ${now_ ? '<div class="tl-nowbar"></div>' : ''}
     <div class="tl-card${now_ ? ' current' : ''}${needsRsvp ? ' ghost' : ''}">
       ${now_ ? `<div class="tl-now" data-s="${start}" data-e="${end}"></div>` : ''}
@@ -1084,7 +1110,7 @@ function renderTlEvent(e, isToday) {
 function renderFreeBlock(from, to) {
   return `
   <div class="tl-event">
-    <div class="tl-time">${msToTime(from)}</div>
+    <div class="tl-time">${clockShort(from)}</div>
     <div class="tl-card ghost">
       <div class="tl-title">${formatDur(to - from)} free</div>
     </div>
@@ -1112,7 +1138,7 @@ addEventListener('resize', tickNowLines);
 // When nothing is running the line falls between two cards, and carries the real time so it is
 // never read as the start of the card below it.
 const nowLine = () => `<div class="now-line"><div class="now-line-bar"></div><div class="now-tag">NOW ${
-  new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: TZ })}</div></div>`;
+  clockTime(new Date())}</div></div>`;
 
 // One day's event stack; today gets interleaved free blocks + a NOW line.
 function renderDayRows(ymd, dayEvents, isToday) {
@@ -1680,7 +1706,7 @@ const saveSettings = () => {
 
 // "Tomorrow" beats "1 day", and 7 is the one everybody means by next week.
 const snoozeLabel = d => d === 1 ? 'Tomorrow' : d === 7 ? 'Next week' : `${d} day${d > 1 ? 's' : ''}`;
-const hourLabel = h => `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`;
+const hourLabel = h => window.appearance.read().clock === '12' ? `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}` : `${String(h).padStart(2, '0')}:00`;
 
 function openSettings() {
   paintSettings();
@@ -2708,7 +2734,7 @@ function setLoading() {
 
 function setDone() {
   document.getElementById('refreshed-at').textContent =
-    new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:TZ});
+    clockTime(new Date());
   document.querySelectorAll('.reload-btn').forEach(b => { b.disabled = false; b.style.opacity = '1'; });
 }
 

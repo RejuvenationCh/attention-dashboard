@@ -59,7 +59,7 @@
         <p class="hero-eyebrow">Attention Dashboard</p>
         <h1 id="greet-line">Hello.</h1>
         <p class="hero-date" id="date-line">–</p>
-        <div class="hero-tiles">
+        <div class="hero-tiles" id="hero-tiles">
           <div class="mac-panel hero-tile">
             <div class="hero-tile-label">Live Time</div>
             <div class="hero-tile-value" id="clock-time">–</div>
@@ -123,7 +123,7 @@
     </section>
 
     <!-- Course deadlines (read-only, from the campus feed) -->
-    <section class="mac-window mini-card courses-card">
+    <section class="mac-window mini-card courses-card" id="courses-card">
       <div class="mini-eyebrow">
         <span class="msym">school</span> Course Deadlines
         <span class="count-chip neutral" id="deadline-count">–</span>
@@ -160,7 +160,7 @@
     </section>
 
     <!-- Schedule -->
-    <section class="mac-window schedule">
+    <section class="mac-window schedule" id="schedule-card">
       <div class="schedule-sticky">
         <h2 class="card-h2">Schedule</h2>
         <span class="count-chip" id="event-count"><span class="spinner"></span></span>
@@ -170,7 +170,7 @@
     </section>
 
     <!-- All upcoming events, searchable. The schedule cards above only cover a week -->
-    <section class="mac-window events-card">
+    <section class="mac-window events-card" id="search-card">
       <div class="section-head" style="margin-bottom:10px">
         <h2 class="card-h2"><span class="msym">event_list</span> Search Calendar</h2>
         <span class="count-chip neutral" id="upcoming-count">–</span>
@@ -193,7 +193,7 @@
     </section>
 
     <!-- Week ahead -->
-    <section class="mac-window week">
+    <section class="mac-window week" id="week-card">
       <div class="section-head" style="margin-bottom:0">
         <h2 id="week-heading">Week Ahead</h2>
         <span class="count-chip neutral" id="week-count"><span class="spinner"></span></span>
@@ -554,6 +554,49 @@
         <option value="rose">Rose</option>
         <option value="amber">Amber</option>
       </select>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-size">Text size
+        <span class="settings-hint">Everything on the page grows or shrinks with it.</span>
+      </label>
+      <select class="task-sort" id="settings-size" onchange="appearanceChanged()">
+        <option value="0.9">Small</option>
+        <option value="1">Normal</option>
+        <option value="1.1">Large</option>
+        <option value="1.2">Larger</option>
+      </select>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-compact">Compact spacing
+        <span class="settings-hint">Less space between cards and tasks, so more fits on screen.</span>
+      </label>
+      <input class="settings-check" id="settings-compact" type="checkbox" onchange="appearanceChanged()">
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-clock">Clock
+        <span class="settings-hint">How times are written everywhere on the page.</span>
+      </label>
+      <select class="task-sort" id="settings-clock" onchange="appearanceChanged()">
+        <option value="24">24-hour (17:30)</option>
+        <option value="12">12-hour (5:30 PM)</option>
+      </select>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label">Show
+        <span class="settings-hint">Cards to keep on the dashboard. Tasks and Accounts always stay.</span>
+      </label>
+      <div class="settings-stack">
+        <label class="settings-inline"><input class="settings-check" type="checkbox" data-card="tiles" onchange="appearanceChanged()"> Clock and Next up</label>
+        <label class="settings-inline"><input class="settings-check" type="checkbox" data-card="ring" onchange="appearanceChanged()"> Day progress ring</label>
+        <label class="settings-inline"><input class="settings-check" type="checkbox" data-card="courses" onchange="appearanceChanged()"> Course deadlines</label>
+        <label class="settings-inline"><input class="settings-check" type="checkbox" data-card="schedule" onchange="appearanceChanged()"> Schedule</label>
+        <label class="settings-inline"><input class="settings-check" type="checkbox" data-card="search" onchange="appearanceChanged()"> Search Calendar</label>
+        <label class="settings-inline"><input class="settings-check" type="checkbox" data-card="week" onchange="appearanceChanged()"> Week Ahead</label>
+      </div>
     </div>
 
     <div class="settings-row">

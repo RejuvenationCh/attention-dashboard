@@ -53,6 +53,27 @@
   --glass-border: rgba(var(--k),0.06);
   color-scheme: dark;
 }
+/* Text size (Settings → Appearance), as a zoom so every px measurement scales with it. */
+body { zoom: var(--zoom, 1); }
+
+/* Compact spacing: the same layout with less air, for small screens or long lists. */
+:root.compact main { gap: 14px; }
+:root.compact .col { gap: 14px; }
+:root.compact .hero { padding: 20px 24px; }
+:root.compact .tasks, :root.compact .schedule, :root.compact .mini-card { padding: 16px 18px; }
+:root.compact .task-list { gap: 4px; }
+:root.compact .task-row { padding: 7px 10px; }
+:root.compact .section-head { margin-bottom: 12px; }
+:root.compact .hero h1 { font-size: 32px; }
+
+/* 12-hour clock: a little more room in the schedule's time column, and a small AM/PM. */
+:root.clock12 .tl-time { width: 40px; left: -48px; font-size: 10.5px; }
+.clock-ampm { font-size: 0.5em; font-weight: 600; margin-left: 3px; letter-spacing: 0; }
+
+/* Cards switched off in Settings → Appearance → Show. Tasks and Accounts always stay. */
+:root.hide-ring .donut-wrap, :root.hide-tiles #hero-tiles, :root.hide-courses #courses-card,
+:root.hide-schedule #schedule-card, :root.hide-search #search-card, :root.hide-week #week-card { display: none; }
+
 /* Reduce effects (Settings): no glass blur, no motion. The blur is the costly part. */
 :root.reduce-effects * {
   backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
@@ -409,7 +430,7 @@ main {
 .timeline::before { content: ''; position: absolute; left: 8px; top: 4px; bottom: 0; width: 1px; background: rgba(var(--k),0.1); }
 .tl-day { position: relative; padding-bottom: 24px; }
 .tl-day:last-child { padding-bottom: 4px; }
-.tl-day-dot { position: absolute; left: -43px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); border: 2px solid #f0f2f5; }
+.tl-day-dot { position: absolute; left: -43px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); border: 2px solid var(--bg); }
 .tl-day-dot.dim { background: var(--muted); width: 8px; height: 8px; left: -42px; }
 .tl-day h3 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--primary); margin-bottom: 16px; margin-left: -24px; }
 .tl-day h3.dim { color: var(--ink-2); font-weight: 500; }

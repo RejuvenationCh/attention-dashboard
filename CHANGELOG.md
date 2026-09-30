@@ -3,6 +3,16 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.8.0 (1 October 2026)
+
+- **Make it yours**, in Settings → Appearance:
+  - **Show:** hide any of the clock tiles, the day ring, Course deadlines, Schedule, Search
+    Calendar or Week Ahead.
+  - **Clock:** 12-hour (5:30 PM) or 24-hour (17:30), everywhere on the page.
+  - **Text size:** small, normal, large or larger.
+  - **Compact spacing:** fits more on the screen.
+- Fixed: the day dots on the schedule had a light ring in dark mode.
+
 ## 1.7.0 (1 October 2026)
 
 - **Quick add.** Type one line at the top of Tasks, like `essay due fri 5pm #school !`, and press
