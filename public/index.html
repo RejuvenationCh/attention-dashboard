@@ -145,7 +145,7 @@
     <!-- Schedule -->
     <section class="mac-window schedule">
       <div class="schedule-sticky">
-        <h2 class="card-h2">Upcoming Schedule</h2>
+        <h2 class="card-h2">Schedule</h2>
         <span class="count-chip" id="event-count"><span class="spinner"></span></span>
       </div>
       <div class="cal-warn" id="cal-warn" style="display:none"></div>
@@ -155,13 +155,13 @@
     <!-- All upcoming events, searchable. The schedule cards above only cover a week -->
     <section class="mac-window events-card">
       <div class="section-head" style="margin-bottom:10px">
-        <h2 class="card-h2"><span class="msym">event_list</span> Find an Event</h2>
+        <h2 class="card-h2"><span class="msym">event_list</span> Search Calendar</h2>
         <span class="count-chip neutral" id="upcoming-count">–</span>
       </div>
       <div class="task-tools">
         <label class="task-search">
           <span class="msym">search</span>
-          <input id="upcoming-search" type="search" placeholder="Search events…" oninput="onUpcomingSearch(this.value)">
+          <input id="upcoming-search" type="search" placeholder="Search your calendar…" oninput="onUpcomingSearch(this.value)">
         </label>
         <button class="task-sort cal-pick-btn" id="upcoming-cal-btn" onclick="toggleUpcomingCals()" title="Which calendars this list shows"></button>
         <select class="task-sort" id="upcoming-range" onchange="onUpcomingRange(this.value)" title="How far ahead">

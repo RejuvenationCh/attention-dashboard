@@ -3,6 +3,13 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.3.1 (30 September 2026)
+
+- Friendlier wording for people who don't use a calendar much: "Upcoming Schedule" is now
+  **Schedule**, "Find an Event" is now **Search Calendar**, and empty days and the "not
+  connected" messages no longer assume you have events.
+- The "Dashboard stopped" page no longer keeps running the clock in the background.
+
 ## 1.3.0 (30 September 2026)
 
 - **Check for updates** in Settings installs a new version straight away and reloads the page.

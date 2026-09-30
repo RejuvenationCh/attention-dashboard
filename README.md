@@ -8,7 +8,7 @@ leave it.
 - **Tasks** with deadlines, snoozing, repeats and links to files or folders
 - **Course deadlines** from eLearn, soonest first
 - **Reminders** for things that are due, even with the dashboard closed
-- **Find an Event** to search what's coming up, filtered by calendar or by type (Class, Work…)
+- **Search Calendar** to find what's coming up, filtered by calendar or by type (Class, Work…)
 - A **month view**, and replies to calendar invitations
 - **Updates itself**, and keeps your data through every update
 
@@ -78,7 +78,7 @@ deadline reminders to Google Calendar is switched off until you connect one.
 ### Calendar types (optional)
 
 Hover a calendar in the Accounts card and click **+ Type** to mark it as Class, Work,
-Personal, Family or Other. eLearn courses start as Class. **Find an Event** then shows a row of
+Personal, Family or Other. eLearn courses start as Class. **Search Calendar** then shows a row of
 buttons to see one type at a time.
 
 ### 2. Your name

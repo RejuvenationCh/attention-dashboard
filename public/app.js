@@ -181,15 +181,15 @@ function showDisconnected() {
     document.getElementById(id).innerHTML = `<div class="empty">${
       failedAccounts.length
         ? 'Signed out. Reconnect your Google account in Accounts'
-        : 'Connect a Google account to load events'}</div>`);
-  // Find an Event has its own list; left alone it spins forever with nothing to load.
+        : 'Connect Google Calendar to see your schedule here'}</div>`);
+  // Search Calendar has its own list; left alone it spins forever with nothing to load.
   _upcoming = [];
   document.getElementById('upcoming-count').textContent = '–';
   document.getElementById('upcoming-cal-btn').hidden = true;
   document.getElementById('upcoming-list').innerHTML = `<div class="empty">${
-    failedAccounts.length ? 'Signed out. Reconnect your Google account in Accounts' : 'Connect a Google account to search events'}</div>`;
+    failedAccounts.length ? 'Signed out. Reconnect your Google account in Accounts' : 'Connect Google Calendar to search it here'}</div>`;
   document.getElementById('cd-days').textContent = '–';
-  document.getElementById('cd-name').textContent = 'Not connected';
+  document.getElementById('cd-name').textContent = 'No calendar yet';
   document.getElementById('cd-sub').textContent = '–';
 }
 
@@ -350,6 +350,11 @@ async function stopDashboard() {
   try {
     await api('/api/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   } catch (err) { showToast(`Could not stop it: ${err.message}`, null, 6); return; }
+  // The clock and refresh timers would keep firing at elements that are about to be gone.
+  // ponytail: browsers number timers upward, so clearing up to the newest id stops them all;
+  // swap for tracked ids if a browser ever stops numbering them that way.
+  const newest = setTimeout(() => {}, 0);
+  for (let id = 1; id <= newest; id++) { clearTimeout(id); clearInterval(id); }
   const start = _platform.os === 'windows' ? 'start.cmd' : 'start.command';
   document.body.innerHTML = `<div class="stopped-page"><h1>Dashboard stopped</h1>
     <p>It starts again the next time you log in. To start it now, double-click <b>${start}</b>
@@ -889,7 +894,7 @@ const nowLine = () => `<div class="now-line"><div class="now-line-bar"></div><di
 
 // One day's event stack; today gets interleaved free blocks + a NOW line.
 function renderDayRows(ymd, dayEvents, isToday) {
-  if (!dayEvents.length && !isToday) return '<div class="tl-empty">No scheduled events</div>';
+  if (!dayEvents.length && !isToday) return '<div class="tl-empty">Nothing scheduled</div>';
 
   const freeBlocks = isToday ? getFreeBlocks(dayEvents, ymd) : [];
   const items = [
@@ -897,7 +902,7 @@ function renderDayRows(ymd, dayEvents, isToday) {
     ...freeBlocks.map(b => ({ type:'free', t: b.from, from: b.from, to: b.to })),
   ].sort((a, b) => a.t - b.t);
 
-  if (!items.length) return '<div class="tl-empty">No scheduled events</div>';
+  if (!items.length) return '<div class="tl-empty">Nothing scheduled</div>';
 
   const parts = items.map(item =>
     item.type === 'event' ? renderTlEvent(item.e, isToday) : renderFreeBlock(item.from, item.to)
@@ -969,7 +974,7 @@ async function loadEvents() {
   // Week ahead (days 3–6)
   const weekDates = [3,4,5,6].map(getDateKey);
   const weekEvents = weekDates.flatMap(d => byDate[d] || []);
-  document.getElementById('week-count').textContent = weekEvents.length + ' event' + (weekEvents.length !== 1 ? 's' : '');
+  document.getElementById('week-count').textContent = weekEvents.length;
 
   document.getElementById('week-list').innerHTML = `<div class="week-rows">${weekDates.map(ymd => {
     const dayEv = byDate[ymd] || [];
@@ -1000,7 +1005,7 @@ async function loadEvents() {
   }).join('')}</div>`;
 }
 
-// Find an Event
+// Search Calendar
 // The schedule cards cover a week and are grouped by day; this one is the flat, searchable
 // list for "when was that meeting again".
 const UPCOMING_KEY = 'chris-dashboard-event-view-v1';
@@ -1044,7 +1049,7 @@ async function loadUpcoming() {
     // 250 rather than the timeline's 50: a term's worth of classes overruns a small page.
     _upcoming = await fetchRange(getDateKey(0), getDateKey(Number(_upView.days) || 30), _upErrors, 250);
   } catch (err) {
-    list.innerHTML = `<div class="error">Could not load events: ${escape(err.message)}</div>`;
+    list.innerHTML = `<div class="error">Could not load your calendar: ${escape(err.message)}</div>`;
     return;
   }
   renderUpcoming();
@@ -1825,7 +1830,7 @@ let pinnedDeadlines = new Set();
 try { pinnedDeadlines = new Set(JSON.parse(localStorage.getItem(DEADLINE_PIN_KEY)) || []); } catch {}
 
 // Deadlines already written to the calendar. The fetched events answer this for anything inside
-// the Find an Event range, but a deadline months out is past it, so each add is also remembered
+// the Search Calendar range, but a deadline months out is past it, so each add is also remembered
 // here, which is what stops a second click duplicating one.
 const DEADLINE_ADDED_KEY = 'chris-dashboard-deadlines-on-calendar-v1';
 let addedDeadlines = new Set();
@@ -2350,7 +2355,7 @@ async function reload() {
     // Picks up tasks added from outside the UI (e.g. an agent posting to /api/todos)
     loadTodos().then(renderTodos),
     loadEvents().catch(err => {
-      document.getElementById('event-list').innerHTML=`<div class="error">Could not load events: ${escape(err.message)}</div>`;
+      document.getElementById('event-list').innerHTML=`<div class="error">Could not load your calendar: ${escape(err.message)}</div>`;
       document.getElementById('event-count').textContent='!';
     }),
     renderDeadlines(),   // handles its own errors, so one bad feed can't sink the rest
