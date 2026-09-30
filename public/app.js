@@ -424,6 +424,24 @@ function changelogHtml(md) {
     : block.startsWith('- ') ? `<ul><li>${inline(block.slice(2).replace(/\s*\n\s*/g, ' '))}</li></ul>` : '').join('');
 }
 
+// Settings → Copy diagnostics: a text report to paste to whoever is helping. The server blanks
+// emails and tokens. If the clipboard is refused, it downloads as a file instead.
+async function copyDiagnostics() {
+  let text;
+  try { text = await (await fetch('/api/diagnostics')).text(); }
+  catch (err) { showToast(`Could not collect diagnostics: ${err.message}`, null, 6); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Diagnostics copied. Paste them in a message to whoever is helping you.', null, 7);
+  } catch {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    a.download = 'attention-diagnostics.txt';
+    a.click();
+    showToast('Saved as attention-diagnostics.txt. Send that file to whoever is helping you.', null, 7);
+  }
+}
+
 // Settings → Your data. The server's part (tasks, reminders, course names, name) plus this
 // browser's preferences, in one file. Skipped: the change-tracking snapshots, which rebuild
 // themselves, the local copy of the tasks (the server's list is the real one), and the

@@ -20,6 +20,7 @@ const freePort = () => new Promise(ok => {
   for (const f of APP) fs.cpSync(path.join(__dirname, f), path.join(dir, f), { recursive: true });
   const port = await freePort();
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ port, autoUpdate: false }));
+  fs.writeFileSync(path.join(dir, 'dashboard.log'), '[token] someone@example.com failed: ?authtoken=abc123&x=1 ya29.secretvalue\n');
 
   let log = '';
   const server = spawn(process.execPath, ['server.js'], { cwd: dir, env: { ...process.env, PORT: '' } });
@@ -69,6 +70,16 @@ const freePort = () => new Promise(ok => {
       let out = ''; s.on('data', d => { out += d; }); s.on('end', () => ok(out));
     });
     assert.ok(rebound.startsWith('HTTP/1.1 403'), 'foreign Host is refused');
+
+    // Diagnostics: a readable report with the private parts blanked.
+    const diag = await get('/api/diagnostics');
+    assert.ok(diag.body.includes('Version: '), 'diagnostics report');
+    for (const leak of ['someone@example.com', 'abc123', 'ya29.secretvalue']) assert.ok(!diag.body.includes(leak), 'diagnostics hides ' + leak);
+
+    // A daily backup is written on start, in the same format Restore reads.
+    const daily = fs.readdirSync(path.join(dir, 'backups'));
+    assert.strictEqual(daily.length, 1);
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'backups', daily[0]), 'utf8')).app, 'attention-dashboard');
 
     // Settings round trip.
     assert.strictEqual((await send('PUT', '/api/config', { name: 'Smoke' })).body.name, 'Smoke');

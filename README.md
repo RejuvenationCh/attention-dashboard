@@ -115,7 +115,8 @@ deadlines. **Settings → Remind me** sets how many days ahead.
 ## Updates
 
 The dashboard updates itself: it checks for a new version every hour and restarts into it.
-Your tasks, sign-ins and settings are kept.
+Your tasks, sign-ins and settings are kept. If a new version ever fails to start, it goes back
+to the one you had and skips that version.
 
 In **Settings** you can see your version, **Check for updates** at any time, and read what's new
 before pressing **Install**. To choose when updates happen, switch **Automatic updates** off;
@@ -132,6 +133,9 @@ sooner, double-click **start.command** (macOS) or **start.cmd** (Windows) in the
 Everything stays in the `attention-dashboard` folder on your computer: tasks, Google sign-ins
 and settings. Only your own computer can open the dashboard; other devices on the same Wi-Fi
 cannot.
+
+**Automatic backups:** a copy is saved every day in the `backups` folder, and the last 7 are
+kept.
 
 **Moving to another computer:** Settings → Your data → **Download** saves a backup file. Install
 the dashboard on the new computer, then **Restore…** that file. Your tasks, reminders, course
@@ -153,6 +157,10 @@ Press **?** anywhere for the keyboard shortcuts: **N** new task, **/** search ta
   `config.json` in the folder (`"port"`).
 - **It doesn't open.** Run the install step again; it is safe to repeat. If it still fails,
   `dashboard.log` in the folder says why.
+- **Asking someone for help?** Settings → **Copy diagnostics** and paste it in your message.
+  Email addresses and passwords are left out of it.
+- **Lost or broken tasks?** A backup is saved every day. Settings → Your data → **Daily
+  copies** opens them; **Restore…** one to go back to that day.
 - **A Google account says "Signed out".** Click **Reconnect** next to it.
 - **Stop dashboard doesn't stay stopped (macOS).** Installs from before version 1.3.0 need the
   install step run once more; after that it stays stopped.

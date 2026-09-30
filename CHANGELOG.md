@@ -3,6 +3,16 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.6.0 (1 October 2026)
+
+- **Safer updates.** If a new version ever fails to start, the dashboard goes back to the
+  version you had within about two minutes, says so in Settings, and skips that version.
+- **Daily backups.** A copy of your tasks, reminders and settings is saved every day; the last
+  7 are kept. Settings → Your data → **Daily copies** opens the folder, and **Restore…** reads
+  them.
+- **Copy diagnostics** in Settings: a short report to paste to whoever is helping you, with
+  email addresses and passwords blanked out.
+
 ## 1.5.0 (1 October 2026)
 
 - **Dark mode.** Settings → Appearance: follow your computer, or pick Light or Dark. You can

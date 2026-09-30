@@ -503,11 +503,12 @@
 
     <div class="settings-row">
       <label class="settings-label">Backup
-        <span class="settings-hint">Your tasks, reminders, course names and settings in one file. Google sign-ins and the eLearn link are left out, so you reconnect those after restoring.</span>
+        <span class="settings-hint">Your tasks, reminders, course names and settings in one file. Google sign-ins and the eLearn link are left out, so you reconnect those after restoring. A copy is also saved automatically every day; the last 7 are kept.</span>
       </label>
       <div class="settings-stack">
         <button class="todo-btn todo-btn-cancel" onclick="downloadBackup()">Download</button>
         <button class="todo-btn todo-btn-cancel" onclick="document.getElementById('restore-file').click()">Restore…</button>
+        <button class="todo-btn todo-btn-cancel" onclick="api('/api/open-backups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(err => showToast('Could not open it: ' + err.message, null, 5))">Daily copies</button>
         <input type="file" id="restore-file" accept="application/json,.json" hidden onchange="restoreBackup(this.files[0]); this.value = ''">
       </div>
     </div>
@@ -527,6 +528,7 @@
       <button class="text-btn" id="update-btn" onclick="checkForUpdates()">Check for updates</button>
       <button class="text-btn update-install" id="install-btn" onclick="installUpdate()" hidden></button>
       <button class="text-btn" onclick="stopDashboard()">Stop dashboard</button>
+      <button class="text-btn" onclick="copyDiagnostics()">Copy diagnostics</button>
       <button class="text-btn" onclick="closeSettings(); document.getElementById('keys-overlay').classList.add('open')">Keyboard shortcuts</button>
     </div>
 

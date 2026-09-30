@@ -143,6 +143,33 @@ if (fs.existsSync(TASKS_FILE)) {
   } catch (err) { console.error('[migrate]', err.message); }
 }
 
+// Backups
+// Everything this install keeps except secrets (Google sign-ins, and the eLearn link, which carries
+// a login token). Used by the Download button and by the daily copies below.
+function buildBackup() {
+  const { on, aheadDays, days, dayHour, doneDeadlines } = loadReminders();
+  return {
+    app: 'attention-dashboard', version: updater.VERSION, exportedAt: new Date().toISOString(),
+    tasks: listTodos(), reminders: { on, aheadDays, days, dayHour, doneDeadlines },
+    courses: moodle.allNames(), profile: { name: config.name || '', autoUpdate: config.autoUpdate !== false },
+  };
+}
+
+// One copy a day in backups/, the last 7 kept, in the format Restore reads. Checked hourly so a
+// computer that stays on still gets a new one each day.
+const BACKUP_DIR = path.join(__dirname, 'backups');
+const BACKUPS_KEPT = 7;
+function dailyBackup() {
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const file = path.join(BACKUP_DIR, `attention-backup-${ymdIn()}.json`);
+    if (fs.existsSync(file)) return;
+    fs.writeFileSync(file, JSON.stringify(buildBackup(), null, 2));
+    const old = fs.readdirSync(BACKUP_DIR).filter(f => /^attention-backup-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort().slice(0, -BACKUPS_KEPT);
+    for (const f of old) fs.unlinkSync(path.join(BACKUP_DIR, f));
+  } catch (err) { console.error('[backup]', err.message); }
+}
+
 // Due reminders
 // Checked here rather than in the page so they arrive with the dashboard closed. Every 20
 // minutes is one SQLite read and nothing else unless something is due, which is negligible.
@@ -217,6 +244,8 @@ async function checkDueReminders() {
     .catch(err => console.error('[remind]', err.message));
 }
 setInterval(checkDueReminders, REMIND_EVERY).unref();
+dailyBackup();
+setInterval(dailyBackup, 3600 * 1000).unref();
 setTimeout(checkDueReminders, 30000).unref();   // once shortly after boot / wake-up restart
 
 // Token store
@@ -543,15 +572,45 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ...updater.status, updatingTo: to });
   }
 
-  // Backup: everything this install keeps except secrets (Google sign-ins, the eLearn link, which
-  // carries a login token). The page adds its own browser-side preferences before saving it.
-  if (p === '/api/backup' && req.method === 'GET') {
-    const { on, aheadDays, days, dayHour, doneDeadlines } = loadReminders();
-    return json(res, 200, {
-      app: 'attention-dashboard', version: updater.VERSION, exportedAt: new Date().toISOString(),
-      tasks: listTodos(), reminders: { on, aheadDays, days, dayHour, doneDeadlines },
-      courses: moodle.allNames(), profile: { name: config.name || '', autoUpdate: config.autoUpdate !== false },
-    });
+  // Settings → Copy diagnostics: what someone helping needs, pasted into a chat. So nothing
+  // private: email addresses and anything token-shaped are blanked, and it holds counts, not data.
+  if (p === '/api/diagnostics' && req.method === 'GET') {
+    const scrub = t => String(t)
+      .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '<email>')
+      .replace(/(authtoken|token|secret|code)=[^&\s"]+/gi, '$1=<hidden>')
+      .replace(/ya29\.[\w-]+|1\/\/[\w-]{20,}|GOCSPX-[\w-]+/g, '<hidden>');
+    let log = '(no dashboard.log in the folder)';
+    try { log = fs.readFileSync(path.join(__dirname, 'dashboard.log'), 'utf8').trimEnd().split('\n').slice(-40).join('\n'); } catch {}
+    const u = updater.status;
+    const text = [
+      'Attention Dashboard diagnostics',
+      `Version: ${updater.VERSION}`,
+      `System: ${os.type()} ${os.release()} (${os.arch()}), Node ${process.version}, ${platform.OS}`,
+      `Running for: ${Math.round(process.uptime() / 60)} min, port ${PORT}`,
+      `Updates: automatic ${u.enabled ? 'on' : 'off'}, latest ${u.latest}, checked ${u.checkedAt || 'not yet'}` +
+        (u.error ? `, problem: ${u.error}` : '') + (u.rolledBack ? `, rolled back from ${u.rolledBack.failed}` : ''),
+      `Google accounts: ${Object.keys(loadTokens()).length}, eLearn feed: ${moodle.configured() ? 'set' : 'not set'}`,
+      `Tasks: ${listTodos().length}, reminders ${loadReminders().on ? 'on' : 'off'}`,
+      `Settings file: ${Object.keys(config).join(', ') || 'empty'}`,
+      '', 'Last lines of dashboard.log:', log,
+    ].join('\n');
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end(scrub(text));
+  }
+
+  // Backup: everything this install keeps except secrets. The page adds its own browser-side
+  // preferences before saving it.
+  if (p === '/api/backup' && req.method === 'GET') return json(res, 200, buildBackup());
+  // Settings → Your data → Open backups folder.
+  if (p === '/api/open-backups' && req.method === 'POST') {
+    if (badOrigin(req)) return json(res, 403, { error: 'bad origin' });
+    if (!(req.headers['content-type'] || '').includes('application/json')) {
+      return json(res, 415, { error: 'expected application/json' });
+    }
+    for await (const _ of req) { /* drain */ }
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    platform.reveal(BACKUP_DIR, true);
+    return json(res, 200, { ok: true });
   }
   // Restore replaces tasks, reminders, course names and the name. Fenced: it rewrites files.
   if (p === '/api/restore' && req.method === 'POST') {
