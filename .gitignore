@@ -16,3 +16,7 @@ reminders.json
 .impeccable/
 .fuse_hidden*
 *.log
+
+# Per-user course-name table, filled in from the UI.
+courses.json
+config.json
