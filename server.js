@@ -345,6 +345,9 @@ async function oauthCallback(res, query) {
 
 // ─── Router ───────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
+  // Only this computer's own address. A web page that points its own domain at 127.0.0.1
+  // (DNS rebinding) would otherwise count as same-origin and could read /api/token.
+  if (!ORIGINS.has('http://' + req.headers.host)) { res.writeHead(403); return res.end(); }
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p = url.pathname;
 
@@ -577,7 +580,9 @@ const server = http.createServer(async (req, res) => {
 let tries = 0;
 server.on('error', err => {
   if (err.code !== 'EADDRINUSE' || ++tries > 20) throw err;
-  setTimeout(() => server.listen(PORT), 1000);
+  setTimeout(() => server.listen(PORT, '127.0.0.1'), 1000);
 });
-server.listen(PORT, () => console.log(`Attention Dashboard v${updater.VERSION} → http://localhost:${PORT}`));
+// Loopback only: this server hands out Google access tokens, so it must never be reachable
+// from the network (campus Wi-Fi). Browsers fall back from ::1 to 127.0.0.1 for "localhost".
+server.listen(PORT, '127.0.0.1', () => console.log(`Attention Dashboard v${updater.VERSION} → http://localhost:${PORT}`));
 updater.start(config, platform.restart);

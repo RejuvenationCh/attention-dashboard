@@ -9,10 +9,10 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 NODE="$(command -v node || true)"
 [ -n "$NODE" ] || { echo "Node.js is not installed. Get version 22.13 or newer from https://nodejs.org, then run this again."; exit 1; }
-"$NODE" -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=13)?0:1)' \
-  || { echo "Node $("$NODE" -v) is too old; this needs 22.13 or newer (https://nodejs.org)."; exit 1; }
+command -v git >/dev/null || echo "Note: git is missing, so the dashboard cannot update itself."
 
-# First free port from 3100 up (3000 is often taken), unless config.json already has one.
+# Checks the Node version, then picks the first free port from 3100 up (3000 is often taken),
+# unless config.json already has one.
 PORT="$("$NODE" install-port.js)"
 
 mkdir -p "$HOME/Library/LaunchAgents"

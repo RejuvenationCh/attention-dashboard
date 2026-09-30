@@ -5,8 +5,10 @@ zero npm dependencies (Node ≥ 22.13).
 
 ## Install (for anyone)
 
-Needs [Node.js](https://nodejs.org) 22.13+ and git (on a Mac, `brew install node`; git comes with
-the Command Line Tools, which macOS offers to install the first time you run `git`).
+Needs [Node.js](https://nodejs.org) 22.13+ and git.
+
+**macOS** (Terminal). `brew install node` if you have Homebrew; git comes with the Command Line
+Tools, which macOS offers to install the first time you run `git`.
 
 ```bash
 git clone https://github.com/RejuvenationCh/attention-dashboard.git
@@ -14,9 +16,26 @@ cd attention-dashboard
 ./install.sh
 ```
 
-On Windows, run `powershell -ExecutionPolicy Bypass -File install.ps1` instead (not yet tested
-on a real Windows machine). The installer picks a free port, starts the dashboard at every login
-and opens it. Then: **Connect Google Calendar**, and put your name and eLearn calendar URL in
+**Windows 10/11** (PowerShell). Install the tools, then open a *new* PowerShell window so it
+finds them:
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+winget install Git.Git
+```
+
+```powershell
+git clone https://github.com/RejuvenationCh/attention-dashboard.git
+cd attention-dashboard
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+The Windows side has not been run on a real Windows machine yet; if something fails, the
+output and `dashboard.log` in that folder say why.
+
+The installer picks a free port, starts the dashboard at every login and opens it. Only this
+computer can reach it; nothing is exposed to the network. For its own window: Safari → File →
+Add to Dock (macOS), or Edge → ⋯ → Apps → Install this site as an app (Windows). Then: **Connect Google Calendar**, and put your name and eLearn calendar URL in
 **Settings**. Google shows "Google hasn't verified this app" once: Advanced → Continue.
 
 Your tasks, sign-ins and settings stay on your computer (all gitignored). The dashboard updates

@@ -1,17 +1,30 @@
 // The only OS-specific code in the app. macOS is the tested path; the Windows branches
 // follow windows-port/plan.md and are unverified until someone runs them on Windows.
 // Everything goes through execFile with argv, never a shell, so no path or title is parsed.
+// PowerShell scripts go in as -EncodedCommand (base64 UTF-16), which sidesteps Windows'
+// command-line quoting entirely, and print UTF-8 so non-English folder names survive.
 const { execFile, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const OS = process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'windows' : 'other';
 
+function powershell(script, opts, cb) {
+  const encoded = Buffer.from('[Console]::OutputEncoding = [Text.Encoding]::UTF8\n' + script, 'utf16le').toString('base64');
+  return execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand', encoded],
+    { windowsHide: true, encoding: 'utf8', ...opts }, cb);
+}
+
 // Directory: open it. File: select it in its parent folder.
 function reveal(target, isDir) {
   if (OS === 'mac') return execFile('open', isDir ? [target] : ['-R', target], err => err && console.error('[reveal]', err.message));
-  // explorer.exe exits 1 even on success, so its error is never a failure.
-  if (OS === 'windows') return execFile('explorer.exe', isDir ? [target] : ['/select,' + target], () => {});
+  // explorer.exe exits 1 even on success, so its error is never a failure. It parses its own
+  // command line and wants /select,"C:\a b\c" exactly, so the quoting is done here (a Windows
+  // path cannot contain a quote). normalize turns C:/x into C:\x, which explorer requires.
+  if (OS === 'windows') {
+    const p = `"${path.normalize(target)}"`;
+    return execFile('explorer.exe', [isDir ? p : '/select,' + p], { windowsVerbatimArguments: true }, () => {});
+  }
   execFile('xdg-open', [target], err => err && console.error('[reveal]', err.message));
 }
 
@@ -29,13 +42,14 @@ function pickFolder() {
       });
     }
     if (OS === 'windows') {
-      // -STA is required or the dialog fails opaquely; the TopMost owner keeps it in front of the browser.
+      // STA (set in powershell()) is required or the dialog fails opaquely; the TopMost owner
+      // keeps it in front of the browser.
       const ps = `Add-Type -AssemblyName System.Windows.Forms
 $d = New-Object System.Windows.Forms.FolderBrowserDialog
 $d.Description = 'Choose a folder for this task'
 $d.ShowNewFolderButton = $false
 if ($d.ShowDialog((New-Object System.Windows.Forms.Form -Property @{TopMost=$true})) -eq 'OK') { $d.SelectedPath } else { exit 2 }`;
-      return execFile('powershell.exe', ['-NoProfile', '-STA', '-Command', ps], { timeout: 180000 }, (err, stdout) => {
+      return powershell(ps, { timeout: 180000 }, (err, stdout) => {
         if (err) return err.code === 2 ? resolve(null) : reject(err);
         resolve(stdout.trim().replace(/[\\/]+$/, ''));
       });
@@ -64,8 +78,7 @@ $t.Item(0).AppendChild($x.CreateTextNode($env:AD_TITLE)) > $null
 $t.Item(1).AppendChild($x.CreateTextNode($env:AD_BODY)) > $null
 $id = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($id).Show([Windows.UI.Notifications.ToastNotification]::new($x))`;
-      return execFile('powershell.exe', ['-NoProfile', '-Command', ps],
-        { timeout: 15000, env: { ...process.env, AD_TITLE: title, AD_BODY: body } }, done);
+      return powershell(ps, { timeout: 15000, env: { ...process.env, AD_TITLE: title, AD_BODY: body } }, done);
     }
     reject(new Error('no notifications on this platform'));
   });
