@@ -15,7 +15,7 @@
 <style>
   /* Nothing here but the one state style.css has no reason to carry. The markup below is
      the dashboard's own New Task modal and the stylesheet loaded above is the dashboard's
-     own stylesheet, so everything else — bottom sheet, glass, labels, buttons — is already
+     own stylesheet, so everything else (bottom sheet, glass, labels, buttons) is already
      the real thing rather than a copy of it that can drift.
      Only on screen for a moment, but the fields flashing green is the whole confirmation:
      the window is gone before a toast could be read. */
@@ -62,7 +62,7 @@
 
 <script>
   // Served by the dashboard itself, so every call below is a same-origin one to the same
-  // endpoints the dashboard's own modal uses — no CORS, no token handling beyond what the
+  // endpoints the dashboard's own modal uses: no CORS, no token handling beyond what the
   // dashboard already does, and nothing written back to campus.
   const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -80,7 +80,7 @@
     try { window.webkit.messageHandlers.taskPrompt.postMessage({ action: 'close' }); } catch (e) {}
   };
 
-  // Native folder picker, run by the server — the browser cannot expose a real path.
+  // Native folder picker, run by the server; the browser cannot expose a real path.
   // Same endpoint and same button states as pickFolder() in app.js.
   async function pickFolder() {
     const btn = document.getElementById('browse-btn');
@@ -103,8 +103,8 @@
     }
   }
 
-  // Mirrors createDeadlineEvent() in app.js — a second copy, because this page cannot
-  // call into that file. The event's shape (📌 prefix, 09:00 local time, 24h popup reminder)
+  // Mirrors createDeadlineEvent() in app.js. It is a second copy, because this page cannot
+  // call into that file. The event's shape ("Deadline:" prefix, 09:00 local time, 24h popup reminder)
   // has to stay in step with it, so change both together.
   // Same knobs as the dashboard's Settings, read from the store it saves them in.
   function deadlineSettings() {
@@ -127,7 +127,7 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cred.token },
       body: JSON.stringify({
-        summary: `📌 Deadline: ${title}`,
+        summary: `Deadline: ${title}`,
         start: { dateTime: `${deadline}T${dl.time}:00`, timeZone: TZ },
         end:   { dateTime: `${deadline}T${dl.end}:00`, timeZone: TZ },
         reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: dl.warn }] },
@@ -156,7 +156,7 @@
           calEventId = ev.id;
           calAcct = ev.acct;
         } catch (e) {
-          err.textContent = 'Calendar error — task saved without it.';
+          err.textContent = 'Calendar error. The task was saved without it.';
         }
       }
 
@@ -179,7 +179,7 @@
       // Confirmed, then gone. This is the key you press when you do not want to leave
       // what you are doing, so it should not also need dismissing.
       document.body.classList.add('done');
-      save.textContent = 'Saved ✓';
+      save.textContent = 'Saved';
       setTimeout(closeWindow, 400);
     } catch (e) {
       err.textContent = 'Could not add: ' + e.message;

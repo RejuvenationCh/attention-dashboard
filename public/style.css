@@ -1,4 +1,4 @@
-/* ── macOS-glass design system ─────────────────────────────────────
+/* macOS-glass design system
    Windows 16px · panels/cards 12px · chips 8px · dock buttons 12px.
    One accent (#3b82f6); amber = next-event/deadline-soon; red = overdue. */
 :root {
@@ -21,7 +21,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   background-color: #f0f2f5;
   background-image: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
-  /* No background-attachment: fixed — it forces a full-viewport backing layer. */
+  /* No background-attachment: fixed. It forces a full-viewport backing layer. */
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
@@ -38,7 +38,7 @@ body {
 }
 button { font: inherit; }
 
-/* ── Glass surfaces ──
+/* Glass surfaces
    These sit on a near-flat gradient, so backdrop-filter bought almost nothing
    visually while forcing WebKit to keep a large compositing buffer per card.
    Slightly more opaque fills look the same and cost a fraction of the memory.
@@ -57,10 +57,10 @@ button { font: inherit; }
   border-radius: 12px;
 }
 
-/* ── Top header ── */
+/* Top header */
 .mac-header {
   /* Above .month-overlay (55) on purpose. The month view is a modal, so the overlay is
-     inset:0 and normally everything behind it is inert — but the header's segmented control
+     inset:0 and normally everything behind it is inert, but the header's segmented control
      is the pair of views itself, and leaving "Today" under the backdrop made the one control
      that says how to leave the month view the one thing you could not click. The overlay
      reserves the header's band below, so the modal can never slide underneath it. */
@@ -86,7 +86,7 @@ button { font: inherit; }
 .header-btn:hover { color: var(--ink); }
 .header-btn .msym { font-size: 20px; }
 
-/* ── Layout ── */
+/* Layout */
 main {
   max-width: 1200px; margin: 0 auto; padding: 84px 20px 0;
   display: grid; grid-template-columns: 8fr 4fr; gap: 24px; align-items: start;
@@ -97,7 +97,7 @@ main {
   .mac-header { display: none; }
 }
 
-/* ── Accounts card ── */
+/* Accounts card */
 .accounts-card { padding: 20px 24px; }
 .accounts-card .card-h2 .msym { font-size: 20px; color: var(--primary); }
 .acct-empty { font-size: 13px; color: var(--ink-2); margin-bottom: 14px; }
@@ -154,7 +154,7 @@ main {
    sideways the moment it appears. */
 #deadline-list { max-height: 400px; overflow-y: auto; scrollbar-gutter: stable; }
 
-/* A pinned row has to show it while you are not hovering it — otherwise the
+/* A pinned row has to show it while you are not hovering it. Otherwise the
    only thing marking it as pinned is its position, which is easy to misread. */
 .task-row.pinned { background: rgba(183,91,0,0.05); }
 .task-row.pinned .task-actions { opacity: 1; }
@@ -179,7 +179,7 @@ main {
 .btn-primary:hover { background: var(--primary-deep); }
 .btn-primary:active { transform: translateY(1px); }
 
-/* ── Hero ── */
+/* Hero */
 .hero { padding: 32px; position: relative; overflow: hidden; display: flex; align-items: center; gap: 40px; }
 /* A radial gradient gives the same soft glow without a blur-filter buffer. */
 .hero-blur {
@@ -220,12 +220,12 @@ main {
   .donut-wrap { width: 160px; height: 160px; }
 }
 
-/* ── Mini cards (Course Deadlines) ── */
+/* Mini cards (Course Deadlines) */
 .mini-card { padding: 24px; display: flex; flex-direction: column; }
 .mini-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; margin-bottom: 14px; }
 .mini-eyebrow .msym { font-size: 18px; }
 
-/* ── Section heads / chips ── */
+/* Section heads / chips */
 .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .section-head h2, .card-h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
 .count-chip { background: rgba(59,130,246,0.1); color: var(--primary-deep); font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 9px; font-variant-numeric: tabular-nums; }
@@ -244,7 +244,7 @@ main {
   .donut-fill, .toast { transition: none; }
 }
 
-/* ── Tasks ── */
+/* Tasks */
 .tasks { padding: 24px; }
 .task-list { display: flex; flex-direction: column; gap: 10px; }
 .task-row { display: flex; align-items: flex-start; gap: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid transparent; transition: background 0.15s; }
@@ -291,11 +291,11 @@ main {
 .task-actions button:hover { background: rgba(0,0,0,0.05); color: var(--ink); }
 .task-actions .msym { font-size: 17px; }
 /* Pinned and "add to Google Calendar" are the point of the Course Deadlines card rather than
-   a convenience — they are how that list gets triaged — and leaving them hover-only made the
+   a convenience (they are how that list gets triaged), and leaving them hover-only made the
    whole card read as static until you happened to sweep the mouse across a row. Scoped to
    this card deliberately: in the Tasks list the actions stay quiet until you hover. */
 .courses-card .task-actions { opacity: 1; }
-/* ── RSVP ── */
+/* RSVP */
 .rsvp { padding: 20px; background: linear-gradient(rgba(255,255,255,0.8), rgba(255,255,255,0.4)); border-color: rgba(59,130,246,0.2); box-shadow: 0 8px 30px rgba(59,130,246,0.1); }
 .rsvp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .rsvp-head h2 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
@@ -324,7 +324,7 @@ main {
 .rsvp-done.accepted { color: #15803d; background: rgba(21,128,61,0.1); }
 .rsvp-done.declined { color: var(--error); background: rgba(186,26,26,0.1); }
 
-/* A folded invite series. Same card as a single invite — one row is one decision — with the
+/* A folded invite series. Same card as a single invite (one row is one decision), with the
    individual occurrences available underneath rather than printed one after another, which
    is what let five dates of the same weekly invite bury everything else in the card. */
 .invite-group .invite-title { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
@@ -336,7 +336,7 @@ main {
 .invite-instance .invite-btns { margin-top: 0; flex: 0 0 auto; }
 .invite-instance .invite-btns button { flex: 0 0 auto; padding: 5px 12px; }
 
-/* ── Schedule timeline ── */
+/* Schedule timeline */
 .schedule { padding: 24px; max-height: 560px; overflow-y: auto; position: relative; }
 .schedule-sticky {
   position: sticky; top: -24px; margin: -8px 0 16px; padding: 8px 0 12px;
@@ -388,7 +388,7 @@ main {
 }
 .cal-warn strong { display: block; margin-bottom: 4px; font-size: 12px; }
 
-/* ── Week ── */
+/* Week */
 .week { padding: 24px; }
 .week-rows { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; }
 .week-row { display: flex; gap: 14px; align-items: flex-start; }
@@ -407,7 +407,7 @@ main {
 .week-none { font-size: 12px; color: var(--ink-3); }
 .week-rsvp { font-size: 10px; font-weight: 600; color: var(--amber-accent); background: rgba(183,91,0,0.1); border-radius: 999px; padding: 1px 7px; margin-left: auto; flex-shrink: 0; }
 
-/* ── Dock ── */
+/* Dock */
 .dock-wrap { position: fixed; bottom: 16px; left: 0; width: 100%; z-index: 50; display: flex; justify-content: center; pointer-events: none; padding: 0 16px; }
 /* Sits over scrolling content, so it needs its own opacity now that the shared
    .mac-window fill no longer blurs. */
@@ -434,7 +434,7 @@ main {
 .dock-add .msym { font-size: 20px; }
 .dock button:disabled { opacity: 0.5; cursor: default; }
 
-/* ── Toast ── */
+/* Toast */
 .toast {
   position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%);
   background: rgba(30,33,40,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
@@ -448,7 +448,7 @@ main {
 .toast-undo { background: none; border: none; color: #8cb0f8; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; }
 .toast-bar { position: absolute; bottom: 0; left: 0; height: 2px; background: var(--primary); width: 100%; transform-origin: left; }
 
-/* ── Todo modal (bottom sheet) ── */
+/* Todo modal (bottom sheet) */
 .todo-overlay {
   position: fixed; inset: 0; background: rgba(18,22,30,0.4);
   backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
@@ -501,7 +501,7 @@ main {
 .todo-btn-cancel { background: rgba(225,227,228,0.6); color: var(--ink-2); }
 .todo-err { font-size: 11px; color: var(--error); margin-bottom: 8px; min-height: 14px; }
 
-/* ── Month modal ── */
+/* Month modal */
 .month-overlay {
   position: fixed; inset: 0; background: rgba(18,22,30,0.4);
   backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
@@ -554,7 +554,7 @@ main {
 .month-cell.past .dnum { color: #c2c6d6; }
 .month-dots { display: flex; gap: 1.5px; margin-top: 3px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
 .month-dot { width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; }
-/* ── Month: expanded view (event titles in the cells) ── */
+/* Month: expanded view (event titles in the cells) */
 .month-modal.expanded { max-width: min(1120px, 95vw); }
 .month-modal.expanded .month-cell {
   aspect-ratio: auto; min-height: 104px; align-items: stretch;
@@ -563,7 +563,7 @@ main {
 .month-modal.expanded .month-cell .dnum { align-self: center; margin-bottom: 1px; }
 .month-modal.expanded .month-events { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 /* The calendar's colour is carried by a tint of the chip itself rather than a
-   stripe down one side. Timed events stay tinted, all-day stays solid — two
+   stripe down one side. Timed events stay tinted, all-day stays solid: two
    kinds, two encodings, same as before, without the side rule. */
 .mev {
   display: block; font-size: 10.5px; line-height: 1.35; text-align: left;
@@ -586,7 +586,7 @@ main {
 .month-day-detail-title { font-size: 11px; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
 .month-day-detail .tl-events { gap: 10px; }
 
-/* ── Task tools: search, sort, reminders ── */
+/* Task tools: search, sort, reminders */
 .task-tools { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .task-search {
   display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
@@ -616,11 +616,11 @@ main {
 .due-flag.overdue { background: rgba(186,26,26,0.1); color: var(--error); }
 .due-flag.today   { background: rgba(183,91,0,0.12); color: var(--amber-accent); }
 
-/* ── Flagged, snoozed and completed rows ── */
+/* Flagged, snoozed and completed rows */
 .task-row.flagged { background: rgba(183,91,0,0.05); }
 .flag-btn.on { color: var(--amber-accent); }
 
-/* Sits under its own row rather than inside it — the row is a flex line, and a menu that
+/* Sits under its own row rather than inside it. The row is a flex line, and a menu that
    joined it would push the title around when it opened. */
 .snooze-menu {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
@@ -649,7 +649,7 @@ main {
 .task-sub-toggle .text-btn { margin-left: auto; }
 .done-list { opacity: 0.85; }
 
-/* ── Settings ── */
+/* Settings */
 .settings-modal { max-width: 480px; max-height: 92vh; overflow-y: auto; overscroll-behavior: contain; }   /* taller than a laptop screen */
 .settings-row {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
@@ -673,7 +673,7 @@ main {
 .settings-modal .todo-btn-row { margin-top: 18px; }
 .settings-version { margin-top: 14px; text-align: center; }
 
-/* ── Notifications ── */
+/* Notifications */
 .notif-btn { position: relative; }
 .notif-badge {
   position: absolute; top: -5px; right: -7px; min-width: 16px; height: 16px; padding: 0 4px;
@@ -711,7 +711,7 @@ main {
   .notif-panel { top: auto; bottom: 76px; left: 16px; right: 16px; width: auto; }
 }
 
-/* ── Day reminders ── */
+/* Day reminders */
 .day-strip {
   grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   padding: 10px 16px; border-radius: 12px; font-size: 13px; color: var(--ink);
@@ -755,7 +755,7 @@ input.todo-input { resize: none; }   /* Safari draws a resize grip on date input
 .tl-live { color: var(--primary-deep); font-weight: 600; }
 /* Where the clock has reached inside an event that is running. Only a faint rule across the
    row: it slips behind the card, so it marks the time without landing on any text. The element
-   inside the card is invisible — it exists to measure the height the rule sits at. */
+   inside the card is invisible; it exists to measure the height the rule sits at. */
 .tl-card { position: relative; }
 .tl-now { position: absolute; left: 0; top: 0; width: 0; pointer-events: none; }
 .tl-nowbar { position: absolute; left: -46px; right: 0; height: 1px; background: rgba(0,0,0,var(--nowline-alpha, 0.09)); z-index: 0; pointer-events: none; }

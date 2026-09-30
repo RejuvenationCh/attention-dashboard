@@ -1,7 +1,7 @@
 // Moodle (eLearn UC) calendar feed → events shaped like Google Calendar's.
 //
 // Moodle's export endpoint (calendar/export_execute.php) authenticates on
-// userid+authtoken alone — it sets NO_MOODLE_COOKIES — so this server can pull
+// userid+authtoken alone (it sets NO_MOODLE_COOKIES), so this server can pull
 // it directly with no session. It emits one VEVENT per occurrence (repeat
 // instances are already separate rows in Moodle's DB) and writes no VTIMEZONE
 // and no TZID, which is why the parser below is small. See
@@ -17,12 +17,12 @@ const FAIL_TTL = 60 * 1000;           // don't retry-storm a campus that is down
 const SITE_NAME = 'eLearn UC';
 const ACCT = 'moodle';                // pseudo-account id; also the _acct on events
 
-// Moodle's ICS carries only the course *shortname* ("20261_IMT01303305-A") — there
+// Moodle's ICS carries only the course *shortname* ("20261_IMT01303305-A"). There
 // is no fullname field, and every page that would show one is behind the campus
 // login, so the readable name cannot be fetched. It comes from courses.json at the
 // project root instead: a shortname → name table. A file rather than a .env entry
 // because it is a mapping, not a secret. Lookups accept the full shortname or the
-// term-stripped code ("IMT01303305-A") — the "<term>_" prefix changes every
+// term-stripped code ("IMT01303305-A"). The "<term>_" prefix changes every
 // semester, so the stripped form is what survives. Unmapped courses show the
 // shortname, which is what the card did before the table existed.
 const NAMES_PATH = __dirname + '/courses.json';
@@ -111,7 +111,7 @@ const startKey = e => (e.start.dateTime || e.start.date).slice(0, 10);
 // Build the calendar list and the events, both in Google Calendar's shape so
 // the frontend needs no special cases.
 // `names` is injected rather than read here so the conversion stays a pure
-// function of its input — test-moodle.js exercises it with its own table.
+// function of its input; test-moodle.js exercises it with its own table.
 function build(text, origin, names = {}) {
   const raw = parseIcs(text);
   const courses = new Set();
@@ -120,7 +120,7 @@ function build(text, origin, names = {}) {
   for (const ev of raw) {
     const uid = ev.UID?.value?.trim();
     const start = parseDt(ev.DTSTART);
-    if (!uid || !start) continue;                       // unusable — skip rather than render a ghost
+    if (!uid || !start) continue;                       // unusable: skip rather than render a ghost
     // Moodle writes zero-duration events as DTSTART == DTEND (it has no all-day
     // representation), so an equal end is normal, not a bug.
     const end = parseDt(ev.DTEND) || start;
@@ -152,7 +152,7 @@ function build(text, origin, names = {}) {
   // Every key in courses.json is a course you are enrolled in, so the ones the feed
   // never mentions still get a calendar. Moodle emits nothing for a course with no
   // dated activity, and that silence is the only way it could have told us the course
-  // exists — so the roster has to come from the file. The payoff is that the Accounts
+  // exists, so the roster has to come from the file. The payoff is that the Accounts
   // card shows the whole load and the toggle is already in place the day the course
   // produces something. These carry no events, so the Course Deadlines card is
   // unaffected and stays purely "what's due".
@@ -188,21 +188,21 @@ async function feed() {
     text = await r.text();
   } catch (err) {
     cache = { ...cache, failedAt: Date.now(), err: err.message };
-    if (cache.data) { console.error('[moodle] serving cached feed —', err.message); return cache.data; }
+    if (cache.data) { console.error('[moodle] serving cached feed:', err.message); return cache.data; }
     throw err;
   }
 
   // A rotated token (or a password change) gets an HTML login/error page back,
   // which would otherwise parse as "a calendar with no events".
   if (!text.includes('BEGIN:VCALENDAR')) {
-    const msg = 'Moodle did not return a calendar — re-copy the export URL into Settings';
+    const msg = 'Moodle did not return a calendar. Copy the export URL into Settings again';
     cache = { ...cache, failedAt: Date.now(), err: msg };
-    if (cache.data) { console.error('[moodle] serving cached feed —', msg); return cache.data; }
+    if (cache.data) { console.error('[moodle] serving cached feed:', msg); return cache.data; }
     throw new Error(msg);
   }
 
   // Re-read courses.json on every refresh, so an edit lands within FEED_TTL
-  // without a restart — unlike .env, which process.loadEnvFile freezes at boot.
+  // without a restart, unlike .env, which process.loadEnvFile freezes at boot.
   // text + origin are kept so a rename can rebuild without refetching the feed.
   const origin = new URL(url).origin;
   cache = { at: Date.now(), failedAt: 0, text, origin, data: build(text, origin, readNames()) };

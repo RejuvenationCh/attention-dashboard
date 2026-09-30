@@ -1,7 +1,7 @@
 // Auto-update. A release is a git tag (v1.2.0, made with `npm version`); every install is a
 // git clone, so updating is: fetch tags, check out the newest one, restart.
 // Skipped when this isn't a clone, when tracked files have local edits (a developer's
-// checkout, or someone's own tweaks — never overwrite them), or with "autoUpdate": false
+// checkout, or someone's own tweaks, which must never be overwritten), or with "autoUpdate": false
 // in config.json. Personal data is all gitignored, so a checkout never touches it.
 const { execFile } = require('child_process');
 const fs = require('fs');

@@ -44,7 +44,7 @@
   <!-- Day reminders for today and tomorrow, e.g. "every Wednesday: wear batik". Managed in Settings. -->
   <div class="day-strip" id="day-strip" hidden></div>
 
-  <!-- ── LEFT COLUMN ── -->
+  <!-- LEFT COLUMN -->
   <div class="col">
 
     <!-- Hero -->
@@ -115,8 +115,8 @@
     </section>
 
     <!-- Google accounts -->
-    <!-- Last in the column deliberately. This card is configuration — three accounts and
-         two dozen calendar checkboxes — and it used to sit first, in the widest column's
+    <!-- Last in the column deliberately. This card is configuration (three accounts and
+         two dozen calendar checkboxes), and it used to sit first, in the widest column's
          most valuable slot, pushing Tasks and every deadline below the fold. The page runs
          2150px against a 950px viewport, so the top of it should be what needs you rather
          than what you set up once. renderAccounts() looks everything up by id, so the
@@ -130,7 +130,7 @@
     </section>
   </div>
 
-  <!-- ── RIGHT COLUMN ── -->
+  <!-- RIGHT COLUMN -->
   <div class="col">
 
     <!-- RSVP -->
@@ -152,7 +152,7 @@
       <div id="event-list"><div class="loading"><span class="spinner"></span></div></div>
     </section>
 
-    <!-- All upcoming events, searchable — the schedule cards above only cover a week -->
+    <!-- All upcoming events, searchable. The schedule cards above only cover a week -->
     <section class="mac-window events-card">
       <div class="section-head" style="margin-bottom:10px">
         <h2 class="card-h2"><span class="msym">event_list</span> Find an Event</h2>
@@ -271,7 +271,7 @@
   </div>
 </div>
 
-<!-- Settings — every knob the dashboard exposes, applied as you change it -->
+<!-- Settings: every knob the dashboard exposes, applied as you change it -->
 <div class="todo-overlay" id="settings-overlay" onclick="if(event.target===this) closeSettings()">
   <div class="todo-modal settings-modal">
     <div class="todo-modal-head">

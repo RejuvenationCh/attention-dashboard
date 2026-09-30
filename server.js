@@ -45,7 +45,7 @@ const ORIGINS = new Set([`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`]
 const badOrigin = req => req.headers.origin && !ORIGINS.has(req.headers.origin);
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
 
-// ─── Task store (SQLite) ──────────────────────────────────────────
+// Task store (SQLite)
 // `seq` preserves list order; `id` is the stable key the frontend uses.
 // Column is `description` because `desc` is a SQL keyword.
 const db = new DatabaseSync(DB_FILE);
@@ -65,15 +65,15 @@ db.exec(`
 `);
 
 // Columns added after the table first shipped. CREATE TABLE IF NOT EXISTS does nothing to a
-// database that already exists, so each is added only when it is missing — running the ALTER
+// database that already exists, so each is added only when it is missing. Running the ALTER
 // unconditionally would throw "duplicate column name" on every boot after the first.
 const ADDED_COLUMNS = {
   done_at:      'TEXT',     // when it was completed; null while the task is still open
   priority:     'INTEGER',  // 1 = flagged; null rather than 0 so the column stays empty
-  snooze_until: 'TEXT',     // YYYY-MM-DD — hidden from the list until this date
+  snooze_until: 'TEXT',     // YYYY-MM-DD, hidden from the list until this date
   course_event: 'TEXT',     // Moodle event id this task was made for (Course Deadlines card)
   cal_id:       'TEXT',     // which calendar calEventId lives on; null means the account's primary
-  repeat:       'TEXT',     // 'weekly' | 'monthly' — ticking it off moves the deadline on instead
+  repeat:       'TEXT',     // 'weekly' | 'monthly'; ticking it off moves the deadline on instead
 };
 {
   const have = new Set(db.prepare('PRAGMA table_info(todos)').all().map(c => c.name));
@@ -143,9 +143,9 @@ if (fs.existsSync(TASKS_FILE)) {
   } catch (err) { console.error('[migrate]', err.message); }
 }
 
-// ─── Due reminders ────────────────────────────────────────────────
+// Due reminders
 // Checked here rather than in the page so they arrive with the dashboard closed. Every 20
-// minutes is one SQLite read and nothing else unless something is due — negligible.
+// minutes is one SQLite read and nothing else unless something is due, which is negligible.
 // Delivered by the OS (platform.js), not the browser: a Safari web app on localhost cannot get
 // notification permission. Dates are in the machine's own zone, as in public/app.js.
 const REMINDERS_FILE = path.join(__dirname, 'reminders.json');
@@ -183,7 +183,7 @@ async function checkDayReminders(r, today) {
 async function dueCourseDeadlines(r, today) {
   if (!moodle.configured()) return [];
   const linked = new Set(listTodos().filter(t => t.courseEventId && !t.doneAt).map(t => t.courseEventId));
-  for (const id of r.doneDeadlines) linked.add(id);   // submitted — nothing left to remind about
+  for (const id of r.doneDeadlines) linked.add(id);   // submitted: nothing left to remind about
   const items = await moodle.eventsFor(today, plusDays(today, Math.max(r.aheadDays, 0)));
   return items
     .filter(e => !linked.has(e.id))   // a linked task already speaks for it
@@ -219,7 +219,7 @@ async function checkDueReminders() {
 setInterval(checkDueReminders, REMIND_EVERY).unref();
 setTimeout(checkDueReminders, 30000).unref();   // once shortly after boot / wake-up restart
 
-// ─── Token store ──────────────────────────────────────────────────
+// Token store
 // tokens.json holds one long-lived refresh token per account. It never leaves
 // this machine and is gitignored; access tokens are derived from it on demand.
 function loadTokens() {
@@ -262,7 +262,7 @@ function emailFromIdToken(idToken = '') {
   } catch { return null; }
 }
 
-// ─── Handlers ─────────────────────────────────────────────────────
+// Handlers
 function json(res, code, body) {
   res.writeHead(code, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(body));
@@ -343,7 +343,7 @@ async function oauthCallback(res, query) {
   }
 }
 
-// ─── Router ───────────────────────────────────────────────────────
+// Router
 const server = http.createServer(async (req, res) => {
   // Only this computer's own address. A web page that points its own domain at 127.0.0.1
   // (DNS rebinding) would otherwise count as same-origin and could read /api/token.
@@ -360,7 +360,7 @@ const server = http.createServer(async (req, res) => {
     // rides along with the account list the client already fetches at boot.
     if (moodle.configured()) {
       let calendars = [];
-      // A campus outage must not take the whole account list down with it —
+      // A campus outage must not take the whole account list down with it:
       // Google accounts would vanish from the dashboard too.
       try { ({ calendars } = await moodle.feed()); }
       catch (err) { console.error('[moodle]', err.message); }

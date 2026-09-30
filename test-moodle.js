@@ -21,7 +21,7 @@ const ICS = [
   'DTSTART:20260915T010000Z',
   'DTEND:20260915T023000Z',
   'SUMMARY:Struktur Data',
-  'DESCRIPTION:Week 3 — sorting\\, searching and\\ncomplexity analysis. Bring your lap',
+  'DESCRIPTION:Week 3: sorting\\, searching and\\ncomplexity analysis. Bring your lap',
   // Folded mid-word: the CRLF + single space is a marker and is removed whole,
   // so this must re-join as "laptop." with no space introduced or lost.
   ' top.',
@@ -50,21 +50,21 @@ const ICS = [
   'END:VEVENT',
   'BEGIN:VEVENT',
   'UID:105@elearn.uc.ac.id',
-  'SUMMARY:No DTSTART — unusable',
+  'SUMMARY:No DTSTART, unusable',
   'END:VEVENT',
   'END:VCALENDAR',
 ].join('\r\n');
 
 const byId = (evs, uid) => evs.find(e => e.id === 'moodle-' + uid);
 
-// ── pure conversion ───────────────────────────────────────────────
+// pure conversion
 {
   const { calendars, events } = moodle.build(ICS, ORIGIN);
 
   // Undated events are skipped, not rendered as ghosts.
   assert.strictEqual(events.length, 4, 'expected 4 usable events, got ' + events.length);
 
-  // 01:00Z → 08:00, eLearn's own (GMT+7) clock, labelled +08:00 — the dashboard shows what eLearn's
+  // 01:00Z → 08:00, eLearn's own (GMT+7) clock, labelled +08:00. The dashboard shows what eLearn's
   // page shows. The leading 10 chars must still be the date on that clock.
   const a = byId(events, '101@elearn.uc.ac.id');
   assert.strictEqual(a.start.dateTime, '2026-09-15T08:00:00+08:00');
@@ -123,7 +123,7 @@ const byId = (evs, uid) => evs.find(e => e.id === 'moodle-' + uid);
 
   // A course Moodle never publishes still gets a calendar, so the Accounts card can
   // show a load the feed is silent about. It must not invent events, and a key that
-  // does match a feed course must not duplicate it — in either spelling.
+  // does match a feed course must not duplicate it, in either spelling.
   const roster = moodle.build(ICS, ORIGIN, {
     CS201: 'Algorithms',
     '20261_CS201': 'Algorithms',                    // same course, term prefix kept
@@ -152,7 +152,7 @@ const byId = (evs, uid) => evs.find(e => e.id === 'moodle-' + uid);
   console.log('ok  build/parse (timezone shift, folding, escaping, all-day, zero-duration, colours)');
 }
 
-// ── feed: fetch, filter, and the wrong-content guard ──────────────
+// feed: fetch, filter, and the wrong-content guard
 (async () => {
   process.env.MOODLE_ICS_URL = URL_WITH_TOKEN;
   moodle._reset();

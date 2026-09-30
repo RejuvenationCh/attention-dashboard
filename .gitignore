@@ -4,8 +4,8 @@ node_modules/
 .DS_Store
 
 # SQLite in WAL mode writes tasks.db-wal and tasks.db-shm alongside the database, and both
-# hold real task rows. One glob catches the database, the sidecars and any backup of it —
-# the previous "tasks.db" + "tasks.db-*" pair could not match a dot, so the sidecars slipped
+# hold real task rows. One glob catches the database, the sidecars and any backup of it.
+# The previous "tasks.db" + "tasks.db-*" pair could not match a dot, so the sidecars slipped
 # through.
 tasks.db*
 tasks.json*
