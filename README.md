@@ -69,6 +69,8 @@ app"**. That is expected for a small app like this one: click **Advanced**, then
 
 You can connect more than one Google account. Tick or untick calendars in the Accounts card
 to show or hide them.
+Each calendar can also get a type (Class, Work, Personal, Family, Other): hover a calendar in
+the Accounts card and click **+ Type**. Find an Event can then show one type at a time.
 
 ### 2. Your name
 

@@ -28,6 +28,30 @@ try { hiddenCals = new Set(JSON.parse(localStorage.getItem(CAL_HIDDEN_KEY)) || [
 
 const calKey = (email, calId) => `${email}::${calId}`;
 
+// A type per calendar (Class, Work, ...), set in the Accounts card and used to filter Find an
+// Event. A display preference like the hidden set, so it lives in localStorage. eLearn courses
+// start as Class; choosing "No type" is stored too, so that default can be switched off.
+const CAL_TYPES = ['Class', 'Work', 'Personal', 'Family', 'Other'];
+const CAL_TYPE_KEY = 'chris-dashboard-calendar-types-v1';
+let calTypes = {};
+try { calTypes = JSON.parse(localStorage.getItem(CAL_TYPE_KEY)) || {}; } catch {}
+const calTypeOf = (email, calId) =>
+  calTypes[calKey(email, calId)] ?? (String(calId).startsWith('moodle:') ? 'Class' : '');
+function setCalType(ai, ci, type) {
+  const a = accounts[ai], c = a.calendars[ci];
+  calTypes[calKey(a.email, c.id)] = type;
+  try { localStorage.setItem(CAL_TYPE_KEY, JSON.stringify(calTypes)); } catch {}
+  renderAccounts();
+  renderUpcoming();
+}
+const calTypeSelect = (a, c, ai, ci) => {
+  const t = calTypeOf(a.email, c.id);
+  return `<select class="cal-type${t ? '' : ' unset'}" title="Calendar type" onchange="setCalType(${ai}, ${ci}, this.value)">
+    <option value=""${t ? '' : ' selected'}>${t ? 'No type' : '+ Type'}</option>
+    ${CAL_TYPES.map(x => `<option${x === t ? ' selected' : ''}>${x}</option>`).join('')}
+  </select>`;
+};
+
 // Calendars that do not block your time (a deadline calendar is a list of dates, not meetings).
 // Display state like the hidden set, so it lives in localStorage too.
 const CAL_FREE_KEY = 'chris-dashboard-nonbusy-calendars-v1';
@@ -195,6 +219,7 @@ function renderAccounts() {
             <input type="checkbox" ${isCalShown(a.email, c.id) ? 'checked' : ''} onchange="toggleCal(${ai}, ${ci})">
             <span class="cal-swatch" style="background:${c.color || '#94a3b8'}"></span>
             <span class="cal-name" title="${escape(c.name)}">${escape(c.name)}</span>
+            ${calTypeSelect(a, c, ai, ci)}
             ${isMoodle && c.id !== 'moodle:other' ? `<button class="cal-rename" title="Rename" onclick="event.preventDefault(); renameCourse(${ai}, ${ci})"><span class="msym">edit</span></button>` : ''}
             <button class="cal-busy${blocksTime(a.email, c.id) ? '' : ' off'}" onclick="event.preventDefault(); toggleCalBusy(${ai}, ${ci})"
               title="${blocksTime(a.email, c.id) ? 'Blocks your free time. Click to ignore' : 'Ignored when working out free time'}"
@@ -943,7 +968,7 @@ async function loadEvents() {
 const UPCOMING_KEY = 'chris-dashboard-event-view-v1';
 let _upcoming = [];
 let _upErrors = [];
-let _upView = { q: '', days: '30' };
+let _upView = { q: '', days: '30', type: '' };
 // Calendars kept out of this card only. The schedule and month view still show them.
 const EVENT_HIDDEN_KEY = 'chris-dashboard-event-hidden-calendars-v1';
 let eventHiddenCals = new Set();
@@ -972,6 +997,7 @@ const saveUpView = () => localStorage.setItem(UPCOMING_KEY, JSON.stringify(_upVi
 
 function onUpcomingSearch(v) { _upView.q = v; saveUpView(); renderUpcoming(); }
 function onUpcomingRange(v)  { _upView.days = v; saveUpView(); loadUpcoming(); }
+function onUpcomingType(t)   { _upView.type = t; saveUpView(); renderUpcoming(); }
 
 async function loadUpcoming() {
   const list = document.getElementById('upcoming-list');
@@ -1005,14 +1031,23 @@ function renderUpcoming() {
   document.getElementById('upcoming-search').value = _upView.q;
   document.getElementById('upcoming-range').value = _upView.days;
 
+  // Type pills, only for types some shown calendar actually has.
+  const types = CAL_TYPES.filter(t => cals.some(x => calTypeOf(x.a.email, x.c.id) === t));
+  if (!types.includes(_upView.type)) _upView.type = '';
+  const pills = document.getElementById('upcoming-types');
+  pills.hidden = !types.length;
+  pills.innerHTML = ['', ...types].map(t =>
+    `<button class="type-pill${t === _upView.type ? ' on' : ''}" onclick="onUpcomingType('${t}')">${t || 'All'}</button>`).join('');
+
   const q = _upView.q.trim().toLowerCase();
   const rows = _upcoming.filter(e => inEventList(e._acct, e._calId)
+    && (!_upView.type || calTypeOf(e._acct, e._calId) === _upView.type)
     && (!q || `${e.summary || ''} ${e.location || ''} ${e._calName || ''}`.toLowerCase().includes(q)));
 
   document.getElementById('upcoming-count').textContent = rows.length;
   document.getElementById('upcoming-list').innerHTML = rows.length
     ? `<div class="task-list">${rows.map(upcomingRow).join('')}</div>`
-    : `<div class="empty">${q ? 'Nothing matches that.' : off === cals.length ? 'Every calendar is switched off.' : 'Nothing scheduled.'}</div>`;
+    : `<div class="empty">${q || _upView.type ? 'Nothing matches that.' : off === cals.length ? 'Every calendar is switched off.' : 'Nothing scheduled.'}</div>`;
 }
 
 function upcomingRow(e) {
@@ -1027,6 +1062,7 @@ function upcomingRow(e) {
       <div class="task-meta course-meta">
         <span class="cal-swatch" style="background:${evColor(e)}"></span>
         <span>${relDayLabel(ymd)}${e.start?.dateTime ? ' · ' + formatTime(e.start.dateTime) : ' · all day'} · ${escape(e._calName || '')}</span>
+        ${calTypeOf(e._acct, e._calId) ? `<span class="cal-type-tag">${calTypeOf(e._acct, e._calId)}</span>` : ''}
       </div>
     </div>
     <div class="task-actions">
