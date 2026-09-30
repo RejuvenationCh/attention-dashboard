@@ -131,8 +131,21 @@ sooner, double-click **start.command** (macOS) or **start.cmd** (Windows) in the
 
 Everything stays in the `attention-dashboard` folder on your computer: tasks, Google sign-ins
 and settings. Only your own computer can open the dashboard; other devices on the same Wi-Fi
-cannot. To move to another computer, copy these files from the folder: `tasks.db`,
-`tokens.json`, `config.json` and `courses.json`.
+cannot.
+
+**Moving to another computer:** Settings → Your data → **Download** saves a backup file. Install
+the dashboard on the new computer, then **Restore…** that file. Your tasks, reminders, course
+names and settings come back. Google sign-ins and the eLearn link are left out of the file on
+purpose, so connect Google and paste the eLearn link again.
+
+## Appearance and shortcuts
+
+**Settings → Appearance** has a light and dark theme (or follow your computer), an accent
+colour, and **Reduce effects**, which turns off the glass blur and animations on slower
+computers.
+
+Press **?** anywhere for the keyboard shortcuts: **N** new task, **/** search tasks, **T** today,
+**M** month, **R** refresh, **,** Settings, **Esc** to close.
 
 ## Troubleshooting
 

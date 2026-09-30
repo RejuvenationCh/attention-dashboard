@@ -728,6 +728,7 @@ main {
 .welcome-text { flex: 1; min-width: 0; }
 .welcome-title { font-size: 14px; font-weight: 500; }
 .welcome-hint { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
+.whatsnew-notes { max-height: 260px; margin: 4px 0 10px; }
 .welcome-step .todo-btn { flex: none; padding: 7px 16px; }
 .keys-modal { max-width: 360px; }
 .keys-list { display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; align-items: center; font-size: 13px; }

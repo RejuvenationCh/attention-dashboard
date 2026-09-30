@@ -229,7 +229,16 @@ function setName(course, name) {
   if (cache.text) cache.data = build(cache.text, cache.origin, names);
 }
 
+// Backup and restore (server.js): the whole name table at once.
+function allNames() { return readNames(); }
+function replaceNames(names) {
+  const clean = Object.fromEntries(Object.entries(names || {})
+    .filter(([k, v]) => typeof k === 'string' && typeof v === 'string' && k.length <= 80 && v.length <= 80));
+  fs.writeFileSync(NAMES_PATH, JSON.stringify(clean, null, 2) + '\n');
+  if (cache.text) cache.data = build(cache.text, cache.origin, clean);
+}
+
 // Drop the cache. Used by test-moodle.js and handy when checking a new URL by hand.
 function _reset() { cache = { at: 0, failedAt: 0, data: null }; }
 
-module.exports = { configured, feed, eventsFor, parseIcs, build, setName, _reset, SITE_NAME, ACCT };
+module.exports = { configured, feed, eventsFor, parseIcs, build, setName, allNames, replaceNames, _reset, SITE_NAME, ACCT };

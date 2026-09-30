@@ -543,6 +543,45 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ...updater.status, updatingTo: to });
   }
 
+  // Backup: everything this install keeps except secrets (Google sign-ins, the eLearn link, which
+  // carries a login token). The page adds its own browser-side preferences before saving it.
+  if (p === '/api/backup' && req.method === 'GET') {
+    const { on, aheadDays, days, dayHour, doneDeadlines } = loadReminders();
+    return json(res, 200, {
+      app: 'attention-dashboard', version: updater.VERSION, exportedAt: new Date().toISOString(),
+      tasks: listTodos(), reminders: { on, aheadDays, days, dayHour, doneDeadlines },
+      courses: moodle.allNames(), profile: { name: config.name || '', autoUpdate: config.autoUpdate !== false },
+    });
+  }
+  // Restore replaces tasks, reminders, course names and the name. Fenced: it rewrites files.
+  if (p === '/api/restore' && req.method === 'POST') {
+    if (badOrigin(req)) return json(res, 403, { error: 'bad origin' });
+    if (!(req.headers['content-type'] || '').includes('application/json')) {
+      return json(res, 415, { error: 'expected application/json' });
+    }
+    let body = '';
+    for await (const chunk of req) { body += chunk; if (body.length > 5e6) return json(res, 413, { error: 'backup too large' }); }
+    try {
+      const b = JSON.parse(body);
+      if (b.app !== 'attention-dashboard' || !Array.isArray(b.tasks)) throw new Error('not an Attention Dashboard backup');
+      const tasks = replaceTodos(b.tasks);
+      const r = b.reminders || {};
+      const cur = loadReminders();
+      saveReminders({ ...cur, on: !!r.on,
+        aheadDays: Number.isInteger(r.aheadDays) ? r.aheadDays : cur.aheadDays,
+        dayHour: Number.isInteger(r.dayHour) ? r.dayHour : cur.dayHour,
+        days: Array.isArray(r.days) ? r.days.slice(0, 50) : cur.days,
+        doneDeadlines: Array.isArray(r.doneDeadlines) ? r.doneDeadlines.slice(-500) : cur.doneDeadlines });
+      if (b.courses && typeof b.courses === 'object') moodle.replaceNames(b.courses);
+      if (typeof b.profile?.name === 'string') config.name = b.profile.name.slice(0, 40);
+      if (typeof b.profile?.autoUpdate === 'boolean') { config.autoUpdate = b.profile.autoUpdate; updater.status.enabled = b.profile.autoUpdate; }
+      saveConfig(config);
+      return json(res, 200, { ok: true, tasks });
+    } catch (err) {
+      return json(res, 400, { error: err.message });
+    }
+  }
+
   // What this OS can do, so the page hides buttons that would only fail.
   if (p === '/api/platform' && req.method === 'GET') return json(res, 200, platform.capabilities);
 
@@ -605,3 +644,17 @@ server.on('error', err => {
 // from the network (campus Wi-Fi). Browsers fall back from ::1 to 127.0.0.1 for "localhost".
 server.listen(PORT, '127.0.0.1', () => console.log(`Attention Dashboard v${updater.VERSION} → http://localhost:${PORT}`));
 updater.start(config, platform.restart);
+
+// What's new, once per update: the CHANGELOG entries since the version that ran last. Installs
+// from before 1.5 never recorded one; if this one was already in use, show just this version.
+if (config.lastVersion !== updater.VERSION) {
+  const used = config.lastVersion || fs.existsSync(TOKENS_FILE) || listTodos().length > 0 || config.name;
+  if (used) {
+    try {
+      const log = fs.readFileSync(path.join(__dirname, 'CHANGELOG.md'), 'utf8');
+      updater.status.whatsNew = { version: updater.VERSION, notes: updater.changelogSince(log, config.lastVersion) };
+    } catch { /* no changelog: nothing to show */ }
+  }
+  config.lastVersion = updater.VERSION;
+  saveConfig(config);
+}

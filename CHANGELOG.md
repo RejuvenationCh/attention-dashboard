@@ -3,6 +3,24 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.5.0 (1 October 2026)
+
+- **Dark mode.** Settings → Appearance: follow your computer, or pick Light or Dark. You can
+  also pick an accent colour.
+- **Reduce effects** in the same place turns off the glass blur and animations, for older or
+  slower computers.
+- **Get started** card on a new install: connect Google, add your name, add your eLearn link.
+- **Backup and restore** in Settings → Your data: your tasks, reminders, course names and
+  settings in one file, for moving to a new computer.
+- **Keyboard shortcuts**: N new task, / search tasks, T today, M month, R refresh, comma for
+  Settings. Press ? for the list.
+- After an update, a card shows what changed, once.
+- Settings is grouped into sections.
+- Faster: the icon font is 20 KB instead of 2.3 MB, and each refresh asks Google for your
+  calendars once instead of twice.
+- macOS: the Browse folder picker opens in a fraction of a second instead of about two.
+- Fixed: changing the eLearn link in Settings could list your accounts twice.
+
 ## 1.4.2 (1 October 2026)
 
 - Settings no longer shows an **Install** button when you already have the latest version.

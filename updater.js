@@ -27,14 +27,19 @@ function newer(a, b) {
 // since the running version, from that release's CHANGELOG.md.
 const status = { version: VERSION, latest: VERSION, available: false, notes: '', checkedAt: null, error: null, enabled: true };
 
-// The CHANGELOG sections newer than the running version, as written in the release itself.
+// The CHANGELOG sections newer than `since` (newest first, as the file is written). With no
+// `since`, only the newest section.
+function changelogSince(text, since) {
+  const start = text.indexOf('\n## ');
+  if (start < 0) return '';
+  let end = since ? text.indexOf(`\n## ${since} `) : text.indexOf('\n## ', start + 1);
+  if (end <= start) end = since ? text.length : end;
+  return text.slice(start + 1, end < 0 ? undefined : end).trim();
+}
+
+// What an available release adds, from that release's own CHANGELOG.
 async function notesFor(tag) {
-  try {
-    const text = await git('show', `${tag}:CHANGELOG.md`);
-    const start = text.indexOf('\n## ');
-    const end = text.indexOf(`\n## ${VERSION} `);
-    return start < 0 ? '' : text.slice(start + 1, end > start ? end : undefined).trim();
-  } catch { return ''; }
+  try { return changelogSince(await git('show', `${tag}:CHANGELOG.md`), VERSION); } catch { return ''; }
 }
 
 // Look, don't touch: fetch the tags and record whether there is something to install.
@@ -92,7 +97,7 @@ function start(config, restart) {
   setInterval(run, CHECK_EVERY).unref();
 }
 
-module.exports = { start, check, install, status, newer, VERSION };
+module.exports = { start, check, install, status, newer, changelogSince, VERSION };
 
 if (require.main === module) {   // node updater.js: self-check of the version compare
   const assert = require('assert');
@@ -100,5 +105,9 @@ if (require.main === module) {   // node updater.js: self-check of the version c
   assert(newer('2.0.0', 'v1.99.99'));
   assert(!newer('v1.0.0', '1.0.0'));
   assert(!newer('v1.0.0-beta', '0.1.0'));
+  const log = '# Changelog\n\nintro\n\n## 1.2.0 (x)\n\n- c\n\n## 1.1.0 (x)\n\n- b\n\n## 1.0.0 (x)\n\n- a\n';
+  assert.strictEqual(changelogSince(log, '1.0.0'), '## 1.2.0 (x)\n\n- c\n\n## 1.1.0 (x)\n\n- b');
+  assert.strictEqual(changelogSince(log, null), '## 1.2.0 (x)\n\n- c');
+  assert.strictEqual(changelogSince(log, '0.9.0'), log.slice(log.indexOf('## 1.2.0')).trim());
   console.log('updater ok');
 }

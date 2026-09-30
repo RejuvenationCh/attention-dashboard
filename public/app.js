@@ -330,6 +330,7 @@ async function loadProfile() {
   _profileLoaded = true;
   setGreeting();
   renderWelcome();
+  renderWhatsNew();
 }
 async function saveProfile(change) {
   try {
@@ -408,14 +409,76 @@ function paintUpdate() {
   const install = document.getElementById('install-btn');
   install.hidden = !u.available;
   install.textContent = `Install ${u.latest}`;
-  // CHANGELOG markdown, just the parts it uses: "## 1.2.0 (date)" headings and "- " items.
   const notes = document.getElementById('update-notes');
   notes.hidden = !(u.available && u.notes);
-  if (notes.hidden) return;
+  if (!notes.hidden) notes.innerHTML = changelogHtml(u.notes);
+}
+
+// CHANGELOG markdown, just the parts it uses: "## 1.2.0 (date)" headings and "- " items.
+function changelogHtml(md) {
   const inline = t => escape(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '$1');
-  notes.innerHTML = u.notes.split(/\n(?=## |- )/).map(block => block.startsWith('## ')
+  return md.split(/\n(?=## |- )/).map(block => block.startsWith('## ')
     ? `<h4>What's new in ${inline(block.slice(3).split('\n')[0])}</h4>`
     : block.startsWith('- ') ? `<ul><li>${inline(block.slice(2).replace(/\s*\n\s*/g, ' '))}</li></ul>` : '').join('');
+}
+
+// Settings → Your data. The server's part (tasks, reminders, course names, name) plus this
+// browser's preferences, in one file. Skipped: the change-tracking snapshots, which rebuild
+// themselves, the local copy of the tasks (the server's list is the real one), and the
+// one-time cards.
+const BACKUP_SKIP = /^attention-(event-snapshot|todos-v1|welcome|whatsnew)/;
+async function downloadBackup() {
+  try {
+    const backup = await api('/api/backup');
+    backup.prefs = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k.startsWith('attention-') && !BACKUP_SKIP.test(k)) backup.prefs[k] = localStorage.getItem(k);
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+    a.download = `attention-backup-${getDateKey(0)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    showToast(`Backup saved: ${backup.tasks.length} task${backup.tasks.length === 1 ? '' : 's'}`, null, 5);
+  } catch (err) { showToast(`Could not make a backup: ${err.message}`, null, 6); }
+}
+async function restoreBackup(file) {
+  if (!file) return;
+  let backup;
+  try { backup = JSON.parse(await file.text()); } catch { showToast('That file is not a backup.', null, 6); return; }
+  if (backup.app !== 'attention-dashboard' || !Array.isArray(backup.tasks)) { showToast('That file is not an Attention Dashboard backup.', null, 6); return; }
+  if (!confirm(`Restore the backup from ${(backup.exportedAt || '').slice(0, 10) || 'this file'}? It replaces your current tasks (${backup.tasks.length} in the backup).`)) return;
+  try {
+    await api('/api/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(backup) });
+    for (const [k, v] of Object.entries(backup.prefs || {})) {
+      if (k.startsWith('attention-') && !BACKUP_SKIP.test(k) && typeof v === 'string') localStorage.setItem(k, v);
+    }
+  } catch (err) { showToast(`Could not restore: ${err.message}`, null, 7); return; }
+  localStorage.removeItem('attention-todos-v1');   // the server's list is the restored one now
+  alert('Backup restored. Google sign-ins and the eLearn link are not in backups: reconnect Google, and paste the eLearn link in Settings if you use it.');
+  location.reload();
+}
+
+// Once per update: what changed, so an automatic update is not a silent one.
+const WHATSNEW_KEY = 'attention-whatsnew-seen-v1';
+function renderWhatsNew() {
+  const w = _profile.update?.whatsNew, card = document.getElementById('whatsnew-card');
+  let seen = '';
+  try { seen = localStorage.getItem(WHATSNEW_KEY) || ''; } catch {}
+  card.hidden = !w?.notes || seen === w.version;
+  if (card.hidden) return;
+  card.innerHTML = `
+    <div class="welcome-head">
+      <h2 class="card-h2">Updated to version ${escape(w.version)}</h2>
+      <button class="icon-btn" onclick="dismissWhatsNew()" title="Hide"><span class="msym">close</span></button>
+    </div>
+    <div class="update-notes whatsnew-notes">${changelogHtml(w.notes)}</div>
+    <button class="text-btn" onclick="dismissWhatsNew()">Got it</button>`;
+}
+function dismissWhatsNew() {
+  try { localStorage.setItem(WHATSNEW_KEY, _profile.update?.whatsNew?.version || ''); } catch {}
+  renderWhatsNew();
 }
 
 // Check now instead of waiting for the hourly check. Only looks; Install is a separate step.
@@ -1073,7 +1136,9 @@ async function loadEvents(shared) {
   const warnEl = document.getElementById('cal-warn');
   if (_calErrors.length) {
     warnEl.style.display = '';
-    warnEl.innerHTML = `<strong>${_calErrors.length} of ${totalCalendars()} calendars failed to load</strong>`
+    // A whole feed failing (eLearn down) reports its courses as 0, so never "1 of 0".
+    const total = Math.max(totalCalendars(), _calErrors.length);
+    warnEl.innerHTML = `<strong>${_calErrors.length} of ${total} calendar${total === 1 ? '' : 's'} failed to load</strong>`
       + _calErrors.map(m => `<div>${escape(m)}</div>`).join('');
   } else {
     warnEl.style.display = 'none';
