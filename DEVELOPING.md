@@ -5,19 +5,22 @@ Vanilla HTML/CSS/JS and a zero-dependency Node server (`node:sqlite`, Node ≥ 2
 
 ## Releasing an update
 
-Installs only move when there is a new version tag, so committing to `main` is safe:
+Installs only move when there is a new version tag, so committing to `main` is safe.
 
-Add the release's notes to `CHANGELOG.md` and commit them first, then:
+1. Add a `## X.Y.Z (date)` section at the top of `CHANGELOG.md` and commit it. Installs show
+   it as "what's new", before and after updating.
+2. `npm run release -- patch` (or `minor` / `major`).
 
-```bash
-npm version patch   # or minor / major: bumps package.json, commits, tags vX.Y.Z
-git push --follow-tags
-```
+The release script refuses when the tree is dirty, you're not on `main`, `npm test` fails, or
+the changelog has no section for the new version. Otherwise it tags and pushes.
 
-Every install picks it up within an hour, or at once from Settings → Check for updates
-(`updater.js`). An install with local edits to
-tracked files skips the update and says so in Settings. A copy that already contains the newest
-release (a development checkout on `main`) is never moved back to it.
+`npm test` runs the syntax checks, `test-moodle.js`, the updater self-check, `check-icons.js`
+and `test-smoke.js`, which starts a real server from a fresh copy and exercises the API.
+
+Every install picks a release up within an hour, or at once from Settings → Check for
+updates (`updater.js`). An install with local edits to tracked files skips the update and says
+so in Settings. A copy that already contains the newest release (a development checkout on
+`main`) is never moved back to it.
 
 ## Layout
 
