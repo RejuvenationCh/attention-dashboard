@@ -965,8 +965,13 @@ function renderDayRows(ymd, dayEvents, isToday) {
 }
 
 // Load Events
-async function loadEvents() {
-  const events = await fetchRange(getDateKey(0), getDateKey(6));
+// `shared` is reload()'s one fetch for this card and Search Calendar, which covers this week
+// and more; only the week is kept here.
+async function loadEvents(shared) {
+  const week = getDateKey(6);
+  const events = shared
+    ? (await shared).filter(e => (e.start?.dateTime || e.start?.date || '').slice(0, 10) <= week)
+    : await fetchRange(getDateKey(0), week);
   renderCountdown(events);
 
   const rsvp = events.filter(e => e.attendees?.some(a => a.self && a.responseStatus === 'needsAction'));
@@ -1082,12 +1087,12 @@ function onUpcomingSearch(v) { _upView.q = v; saveUpView(); renderUpcoming(); }
 function onUpcomingRange(v)  { _upView.days = v; saveUpView(); loadUpcoming(); }
 function onUpcomingType(t)   { _upView.type = t; saveUpView(); renderUpcoming(); }
 
-async function loadUpcoming() {
+async function loadUpcoming(shared) {
   const list = document.getElementById('upcoming-list');
   list.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
   try {
     // 250 rather than the timeline's 50: a term's worth of classes overruns a small page.
-    _upcoming = await fetchRange(getDateKey(0), getDateKey(Number(_upView.days) || 30), _upErrors, 250);
+    _upcoming = await (shared || fetchRange(getDateKey(0), getDateKey(Number(_upView.days) || 30), _upErrors, 250));
   } catch (err) {
     list.innerHTML = `<div class="error">Could not load your calendar: ${escape(err.message)}</div>`;
     return;
@@ -2390,11 +2395,14 @@ async function reload() {
   }
   setLoading();
   _evRegistry = {};   // fresh render, drop the previous keys (shared by every card that lists events)
+  // One request per calendar for both the week and Search Calendar: its range (7 to 90 days)
+  // always includes the week, so fetching them separately asked Google twice for the same days.
+  const shared = fetchRange(getDateKey(0), getDateKey(Math.max(6, Number(_upView.days) || 30)), _calErrors, 250);
   await Promise.allSettled([
-    loadUpcoming(),
+    loadUpcoming(shared),
     // Picks up tasks added from outside the UI (e.g. an agent posting to /api/todos)
     loadTodos().then(renderTodos),
-    loadEvents().catch(err => {
+    loadEvents(shared).catch(err => {
       document.getElementById('event-list').innerHTML=`<div class="error">Could not load your calendar: ${escape(err.message)}</div>`;
       document.getElementById('event-count').textContent='!';
     }),

@@ -32,9 +32,14 @@ function reveal(target, isDir) {
 function pickFolder() {
   return new Promise((resolve, reject) => {
     if (OS === 'mac') {
+      // System Events owns the dialog so it opens in front of the browser. A bare `activate`
+      // did the same but cost 2 seconds every time (osascript turning itself into an app);
+      // System Events is already running, so this takes about 0.1 to 0.3 s.
       return execFile('osascript', [
+        '-e', 'tell application "System Events"',
         '-e', 'activate',
         '-e', 'POSIX path of (choose folder with prompt "Choose a folder for this task")',
+        '-e', 'end tell',
       ], { timeout: 180000 }, (err, stdout, stderr) => {
         // -128 is the user pressing Cancel.
         if (err) return /-128/.test((stderr || '') + err.message) ? resolve(null) : reject(new Error((stderr || err.message).trim()));
