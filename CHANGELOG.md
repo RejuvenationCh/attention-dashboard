@@ -3,6 +3,14 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.9.0 (1 October 2026)
+
+- **Bahasa Indonesia.** The whole dashboard, dates included, in Indonesian. It follows your
+  browser's language; Settings → Appearance → Language to choose. Your own tasks, notes and
+  calendar names are never translated. Reminder notifications follow the same language.
+- Quick add understands Indonesian: `laporan besok jam 5 sore #kuliah`, `rapat senin 14.30`,
+  `bayar kos setiap bulan 5 okt`, `presentasi lusa`, `minggu depan`, `dalam 3 hari`.
+
 ## 1.8.0 (1 October 2026)
 
 - **Make it yours**, in Settings → Appearance:

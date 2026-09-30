@@ -308,7 +308,7 @@ function dayLabel(offset) {
   if (offset === 0) return 'Today';
   if (offset === 1) return 'Tomorrow';
   const d = new Date(); d.setDate(d.getDate() + offset);
-  return d.toLocaleDateString('en-ID', { weekday:'long', day:'numeric', month:'short', timeZone: TZ });
+  return d.toLocaleDateString(window.i18n.dateLocale, { weekday:'long', day:'numeric', month:'short', timeZone: TZ });
 }
 function escape(s = '') {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -322,7 +322,7 @@ function formatDur(ms) {
 function relDayLabel(ymd) {
   if (ymd === getDateKey(0)) return 'Today';
   if (ymd === getDateKey(1)) return 'Tomorrow';
-  return new Date(ymd + 'T12:00:00').toLocaleDateString('en-ID', { weekday:'short', day:'numeric', month:'short', timeZone: TZ });
+  return new Date(ymd + 'T12:00:00').toLocaleDateString(window.i18n.dateLocale, { weekday:'short', day:'numeric', month:'short', timeZone: TZ });
 }
 
 // Greeting + date header
@@ -340,6 +340,8 @@ async function loadProfile() {
   [_profile, _platform] = await Promise.all([api('/api/config'), api('/api/platform')]).catch(() => [_profile, _platform]);
   document.body.classList.toggle('no-picker', !_platform.canPickFolder);
   _profileLoaded = true;
+  // The server writes the reminder notifications, so it needs to know the language too.
+  if ((_profile.lang || 'en') !== window.i18n.lang) saveProfile({ lang: window.i18n.lang });
   setGreeting();
   renderWelcome();
   renderWhatsNew();
@@ -403,10 +405,11 @@ function paintAppearance() {
   document.getElementById('settings-size').value = String(a.size);
   document.getElementById('settings-compact').checked = !!a.compact;
   document.getElementById('settings-clock').value = a.clock;
+  document.getElementById('settings-lang').value = a.lang || 'auto';
   document.querySelectorAll('[data-card]').forEach(c => { c.checked = !(a.hide || []).includes(c.dataset.card); });
 }
 function appearanceChanged() {
-  const clockWas = window.appearance.read().clock;
+  const clockWas = window.appearance.read().clock, langWas = window.appearance.read().lang;
   window.appearance.save({
     theme: document.getElementById('settings-theme').value,
     accent: document.getElementById('settings-accent').value,
@@ -415,7 +418,10 @@ function appearanceChanged() {
     compact: document.getElementById('settings-compact').checked,
     clock: document.getElementById('settings-clock').value,
     hide: [...document.querySelectorAll('[data-card]')].filter(c => !c.checked).map(c => c.dataset.card),
+    lang: document.getElementById('settings-lang').value,
   });
+  // The whole page is drawn in one language, so a switch reloads it.
+  if (window.appearance.read().lang !== langWas) { location.reload(); return; }
   // Times are written into the cards as they render, so a new clock format needs a redraw.
   if (window.appearance.read().clock !== clockWas) { reload(); paintSettings(); }
 }
@@ -595,7 +601,7 @@ function paintProfile() {
   m.placeholder = _profile.moodle ? 'Connected (paste to replace)' : 'https://elearn.uc.ac.id/calendar/export_execute.php?…';
 }
 document.getElementById('date-line').textContent =
-  new Date().toLocaleDateString('en-ID', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone: TZ });
+  new Date().toLocaleDateString(window.i18n.dateLocale, { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone: TZ });
 
 // Calendars
 // Calendars are discovered per account at sign-in, so the dashboard follows
@@ -780,7 +786,7 @@ function startClock() {
     const t = document.getElementById('clock-time');
     t.innerHTML = t.textContent.replace(/\s?(AM|PM)$/i, '<small class="clock-ampm">$1</small>');
     document.getElementById('clock-day').textContent =
-      now.toLocaleDateString('en-ID', { weekday:'long', timeZone: TZ }) + ' · ' + TZ_LABEL;
+      now.toLocaleDateString(window.i18n.dateLocale, { weekday:'long', timeZone: TZ }) + ' · ' + TZ_LABEL;
   }
   tick();
   setInterval(tick, 1000);
@@ -818,7 +824,7 @@ function renderCountdown(events) {
   if (diffH < 1)       { timeStr = Math.round(diffMs / 60000) + ' min'; subStr = 'very soon'; }
   else if (diffH < 24) { timeStr = Math.round(diffH) + 'h'; subStr = 'Today ' + formatTime(next.start?.dateTime); }
   else if (diffD === 1){ timeStr = '1 day'; subStr = 'Tomorrow ' + formatTime(next.start?.dateTime); }
-  else                 { timeStr = diffD + ' days'; subStr = start.toLocaleDateString('en-ID', { weekday:'short', day:'numeric', month:'short', timeZone: TZ }) + ' ' + formatTime(next.start?.dateTime); }
+  else                 { timeStr = diffD + ' days'; subStr = start.toLocaleDateString(window.i18n.dateLocale, { weekday:'short', day:'numeric', month:'short', timeZone: TZ }) + ' ' + formatTime(next.start?.dateTime); }
   document.getElementById('cd-days').textContent = timeStr;
   document.getElementById('cd-name').textContent = next.summary || '(No title)';
   document.getElementById('cd-sub').textContent  = subStr;
@@ -1236,8 +1242,8 @@ async function loadEvents(shared) {
     const count = dayEv.length;
     const hasRsvp = dayEv.some(e => e.attendees?.some(a => a.self && a.responseStatus === 'needsAction'));
     const d = new Date(ymd + 'T12:00:00');
-    const dow = d.toLocaleDateString('en-ID', { weekday:'short', timeZone: TZ });
-    const dm  = d.toLocaleDateString('en-ID', { day:'numeric', month:'short', timeZone: TZ });
+    const dow = d.toLocaleDateString(window.i18n.dateLocale, { weekday:'short', timeZone: TZ });
+    const dm  = d.toLocaleDateString(window.i18n.dateLocale, { day:'numeric', month:'short', timeZone: TZ });
     return `
       <div class="week-row">
         <div class="week-when"><div class="week-dow">${dow}</div><div class="week-date">${dm}</div></div>
@@ -1447,7 +1453,7 @@ async function loadMonth() {
   const y = monthCursor.getFullYear();
   const m = monthCursor.getMonth(); // 0-indexed
   const monthKey = `${y}-${m}`;
-  const label = monthCursor.toLocaleDateString('en-ID', { month:'long', year:'numeric', timeZone: TZ });
+  const label = monthCursor.toLocaleDateString(window.i18n.dateLocale, { month:'long', year:'numeric', timeZone: TZ });
   document.getElementById('month-nav-label').textContent = label;
 
   const grid = document.getElementById('month-grid');
@@ -1511,7 +1517,7 @@ function showDayDetail(ymd, dayEvents) {
   const panel = document.getElementById('month-day-detail');
   panel.style.display = '';
   document.getElementById('month-day-detail-title').textContent =
-    new Date(ymd + 'T12:00:00').toLocaleDateString('en-ID', { weekday:'long', day:'numeric', month:'long', timeZone: TZ });
+    new Date(ymd + 'T12:00:00').toLocaleDateString(window.i18n.dateLocale, { weekday:'long', day:'numeric', month:'long', timeZone: TZ });
   const body = document.getElementById('month-day-detail-body');
   body.innerHTML = dayEvents.length
     ? `<div class="timeline"><div class="tl-events">${dayEvents.map(e => renderTlEvent(e, false)).join('')}</div></div>`
@@ -1664,7 +1670,7 @@ async function revealTodoPath(id, i = 0) {
 function dueChip(ymd) {
   if (!ymd) return '';
   const days = daysUntil(ymd);
-  const label = new Date(ymd + 'T12:00:00').toLocaleDateString('en-ID', { day:'numeric', month:'short', timeZone: TZ });
+  const label = new Date(ymd + 'T12:00:00').toLocaleDateString(window.i18n.dateLocale, { day:'numeric', month:'short', timeZone: TZ });
   const cls  = days < 0 ? 'overdue' : days <= 3 ? 'soon' : '';
   const icon = days < 0 ? 'warning' : 'event';
   const hint = days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : `${days}d left`;
@@ -2825,7 +2831,7 @@ const saveNotifs = () => localStorage.setItem(NOTIF_KEY, JSON.stringify(_notifs)
 function whenLabel(t) {
   const allDay = t.length <= 10;
   return new Date(allDay ? t + 'T12:00:00' : t)
-    .toLocaleDateString('en-ID', { weekday:'short', day:'numeric', month:'short', timeZone: TZ })
+    .toLocaleDateString(window.i18n.dateLocale, { weekday:'short', day:'numeric', month:'short', timeZone: TZ })
     + (allDay ? '' : ' ' + formatTime(t));
 }
 

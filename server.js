@@ -202,8 +202,13 @@ const ymdIn = (d = new Date()) => d.toLocaleDateString('en-CA');
 const hourIn = () => new Date().getHours();
 const daysBetween = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
 const plusDays = (ymd, n) => new Date(Date.parse(ymd) + n * 86400000).toISOString().slice(0, 10);
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const dueWord = d => d < 0 ? 'Overdue' : d === 0 ? 'Due today' : `Due in ${d} day${d > 1 ? 's' : ''}`;
+// Notifications are written here, so they follow the page's language (config.lang, sent by the page).
+const ID = () => config.lang === 'id';
+const WEEKDAYS = () => ID() ? ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+  : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const dueWord = d => ID()
+  ? (d < 0 ? 'Terlambat' : d === 0 ? 'Jatuh tempo hari ini' : `Jatuh tempo ${d} hari lagi`)
+  : (d < 0 ? 'Overdue' : d === 0 ? 'Due today' : `Due in ${d} day${d > 1 ? 's' : ''}`);
 
 // Day reminders ("every Wednesday: wear batik") land once, in the morning: the page only ever
 // showed them while it was open, which is too late to be useful.
@@ -214,7 +219,7 @@ async function checkDayReminders(r, today) {
   r.daysSentOn = today;
   saveReminders(r);
   if (!mine.length) return;
-  await platform.notify(`${WEEKDAYS[weekday]} reminder${mine.length > 1 ? 's' : ''}`, mine.map(x => x.text).join('\n'))
+  await platform.notify(ID() ? `Pengingat hari ${WEEKDAYS()[weekday]}` : `${WEEKDAYS()[weekday]} reminder${mine.length > 1 ? 's' : ''}`, mine.map(x => x.text).join('\n'))
     .catch(err => console.error('[remind]', err.message));
 }
 
@@ -252,7 +257,8 @@ async function checkDueReminders() {
   r.reminded = Object.fromEntries(all.map(t => [t.id, today]));   // rebuilt daily, cannot grow forever
   saveReminders(r);
   const lines = fresh.map(t => `${dueWord(daysBetween(today, t.deadline))}: ${t.title}`);
-  platform.notify(fresh.length === 1 ? 'Something needs you' : `${fresh.length} things need you`, lines.slice(0, 5).join('\n'))
+  platform.notify(ID() ? (fresh.length === 1 ? 'Ada yang perlu kamu kerjakan' : `${fresh.length} hal perlu kamu kerjakan`)
+    : (fresh.length === 1 ? 'Something needs you' : `${fresh.length} things need you`), lines.slice(0, 5).join('\n'))
     .catch(err => console.error('[remind]', err.message));
 }
 setInterval(checkDueReminders, REMIND_EVERY).unref();
@@ -464,7 +470,9 @@ const server = http.createServer(async (req, res) => {
       }
       saveReminders(r);
       if (turnedOn) {
-        await platform.notify('Reminders on', 'You will hear about tasks that are due, even with the dashboard closed.');
+        await platform.notify(ID() ? 'Pengingat aktif' : 'Reminders on', ID()
+          ? 'Kamu akan diberi tahu tentang tugas yang jatuh tempo, bahkan saat dasbor ditutup.'
+          : 'You will hear about tasks that are due, even with the dashboard closed.');
         checkDueReminders();
       }
       return json(res, 200, { on: r.on, aheadDays: r.aheadDays, dayHour: r.dayHour, doneDeadlines: r.doneDeadlines });
@@ -658,7 +666,7 @@ const server = http.createServer(async (req, res) => {
 
   // Per-install settings. The Moodle URL carries a login token, so it goes in but never comes back out.
   if (p === '/api/config' && req.method === 'GET') {
-    return json(res, 200, { name: config.name || '', moodle: moodle.configured(), update: updater.status });
+    return json(res, 200, { name: config.name || '', lang: config.lang || 'en', moodle: moodle.configured(), update: updater.status });
   }
   if (p === '/api/config' && req.method === 'PUT') {
     if (badOrigin(req)) return json(res, 403, { error: 'bad origin' });
@@ -670,6 +678,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const b = JSON.parse(body);
       if (typeof b.name === 'string') config.name = b.name.trim().slice(0, 40);
+      if (b.lang === 'en' || b.lang === 'id') config.lang = b.lang;
       if (typeof b.autoUpdate === 'boolean') { config.autoUpdate = b.autoUpdate; updater.status.enabled = b.autoUpdate; }
       if (typeof b.moodleUrl === 'string') {
         const u = b.moodleUrl.trim();
@@ -679,7 +688,7 @@ const server = http.createServer(async (req, res) => {
         moodle._reset();
       }
       saveConfig(config);
-      return json(res, 200, { name: config.name || '', moodle: moodle.configured(), update: updater.status });
+      return json(res, 200, { name: config.name || '', lang: config.lang || 'en', moodle: moodle.configured(), update: updater.status });
     } catch (err) {
       return json(res, 400, { error: err.message });
     }

@@ -11,7 +11,7 @@
   };
   const dark = matchMedia('(prefers-color-scheme: dark)');
   // size: page zoom · compact: tighter spacing · clock: '24' | '12' · hide: cards switched off
-  const DEFAULTS = { theme: 'system', accent: 'blue', reduce: false, size: '1', compact: false, clock: '24', hide: [] };
+  const DEFAULTS = { theme: 'system', accent: 'blue', reduce: false, size: '1', compact: false, clock: '24', hide: [], lang: 'auto' };
   const CARDS = ['ring', 'tiles', 'courses', 'schedule', 'search', 'week'];
   const read = () => {
     try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY)) }; }
