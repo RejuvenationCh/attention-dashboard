@@ -158,6 +158,12 @@ function showDisconnected() {
       failedAccounts.length
         ? 'Signed out. Reconnect your Google account in Accounts'
         : 'Connect a Google account to load events'}</div>`);
+  // Find an Event has its own list; left alone it spins forever with nothing to load.
+  _upcoming = [];
+  document.getElementById('upcoming-count').textContent = '–';
+  document.getElementById('upcoming-cal-btn').hidden = true;
+  document.getElementById('upcoming-list').innerHTML = `<div class="empty">${
+    failedAccounts.length ? 'Signed out. Reconnect your Google account in Accounts' : 'Connect a Google account to search events'}</div>`;
   document.getElementById('cd-days').textContent = '–';
   document.getElementById('cd-name').textContent = 'Not connected';
   document.getElementById('cd-sub').textContent = '–';
@@ -983,6 +989,7 @@ async function loadUpcoming() {
 function renderUpcoming() {
   const cals = accounts.flatMap(a => shownCalendars(a).map(c => ({ a, c, k: calKey(a.email, c.id) })));
   const off = cals.filter(x => !inEventList(x.a.email, x.c.id)).length;
+  document.getElementById('upcoming-cal-btn').hidden = !cals.length;
   document.getElementById('upcoming-cal-btn').textContent =
     off ? `Calendars · ${cals.length - off}/${cals.length}` : 'All calendars';
   document.getElementById('upcoming-cal-list').innerHTML = cals.map(({ a, c, k }) => `
@@ -1871,6 +1878,7 @@ function toggleDeadlinePin(i) {
 async function addDeadlineToCalendar(i) {
   const e = _deadlineRows[i];
   if (!e) return;
+  if (!googleAccounts().length) { showToast('Connect a Google account first, then add deadlines to its calendar', null, 6); return; }
   if (deadlineOnCalendar(e)) { showToast('That deadline is already on your calendar', null, 4); return; }
   const ymd = (e.start?.dateTime || e.start?.date || '').slice(0, 10);
   const name = deadlineEventName(e);
@@ -2084,7 +2092,13 @@ function _openModal(heading, saveLabel, title='', desc='', link='', deadline='',
   setModalLinks(linksOf({ link }));
   document.getElementById('todo-modal-deadline').value       = deadlineText(deadline);
   paintDeadlinePreview();
-  document.getElementById('todo-modal-cal').checked          = calChecked;
+  // Nowhere to write a reminder without a Google account, so say so instead of failing on save.
+  const canCal = googleAccounts().length > 0;
+  document.getElementById('todo-modal-cal').checked          = calChecked && canCal;
+  document.getElementById('todo-modal-cal').disabled         = !canCal;
+  document.getElementById('todo-modal-cal-label').textContent = canCal
+    ? 'Add deadline reminder to Google Calendar'
+    : 'Connect a Google account to add deadline reminders';
   document.getElementById('todo-modal-repeat').value         = repeat || '';
   // A deadline that has left the feed (past, or the course dropped it) keeps its link.
   const opts = _deadlines.slice().sort((a, b) => deadlineYmd(a).localeCompare(deadlineYmd(b)))
@@ -2204,7 +2218,7 @@ async function saveTodo() {
           t.calEventId = ev.id;
           t.calAcct = ev.acct;
           t.calId = ev.calId;
-        } catch(e) { errEl.textContent = 'Calendar error. Your other changes were saved.'; }
+        } catch(e) { showToast(`Changes saved, but the calendar reminder failed: ${e.message}`, null, 7); }
       }
     }
     putTodos(todos);
@@ -2221,7 +2235,7 @@ async function saveTodo() {
       calEventId = ev.id;
       calAcct = ev.acct;
       calId = ev.calId;
-    } catch(e) { errEl.textContent = 'Calendar error. The task was saved without it.'; }
+    } catch(e) { showToast(`Task saved, but the calendar reminder failed: ${e.message}`, null, 7); }
   }
 
   todos.push({ id: Date.now().toString(), title, desc, link, deadline, calEventId, calAcct, calId, courseEventId, repeat, done: false });

@@ -493,6 +493,7 @@ main {
 
 .todo-cal-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 12.5px; color: var(--ink-2); }
 .todo-cal-row input { width: 15px; height: 15px; accent-color: var(--primary); }
+.todo-cal-row input:disabled + label { color: var(--ink-3, #94a3b8); }
 .todo-btn-row { display: flex; gap: 8px; }
 .todo-btn { flex: 1; padding: 10px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
 .todo-btn:active { transform: translateY(1px); }

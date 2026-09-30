@@ -49,7 +49,7 @@
 
       <div class="todo-cal-row">
         <input type="checkbox" id="cal" checked>
-        <label for="cal">Add deadline reminder to Google Calendar</label>
+        <label for="cal" id="cal-label">Add deadline reminder to Google Calendar</label>
       </div>
 
       <div class="todo-err" id="err"></div>
@@ -193,6 +193,13 @@
   document.getElementById('cancel').addEventListener('click', closeWindow);
   document.getElementById('close').addEventListener('click', closeWindow);
   document.getElementById('browse-btn').addEventListener('click', pickFolder);
+  // Same rule as the dashboard's modal: no Google account, no reminder option.
+  fetch('api/accounts').then(r => r.json()).then(list => {
+    if (list.some(a => a.source !== 'moodle')) return;
+    cal.checked = false;
+    cal.disabled = true;
+    document.getElementById('cal-label').textContent = 'Connect a Google account to add deadline reminders';
+  }).catch(() => {});
   fetch('api/platform').then(r => r.json())
     .then(p => document.body.classList.toggle('no-picker', !p.canPickFolder)).catch(() => {});
   document.getElementById('overlay').addEventListener('click', e => {
