@@ -525,9 +525,9 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Settings: "Check for updates" and "Stop dashboard". Both end this process, so they are
-  // fenced like the other endpoints that act on the machine.
-  if ((p === '/api/update' || p === '/api/stop') && req.method === 'POST') {
+  // Settings: check for updates, install one, stop the dashboard. Installing and stopping end
+  // this process, so all three are fenced like the other endpoints that act on the machine.
+  if (['/api/update/check', '/api/update/install', '/api/stop'].includes(p) && req.method === 'POST') {
     if (badOrigin(req)) return json(res, 403, { error: 'bad origin' });
     if (!(req.headers['content-type'] || '').includes('application/json')) {
       return json(res, 415, { error: 'expected application/json' });
@@ -538,8 +538,9 @@ const server = http.createServer(async (req, res) => {
       console.log('[stop] stopped from Settings');
       return setTimeout(platform.stop, 300);
     }
-    const tag = await updater.checkNow();
-    return json(res, 200, { ...updater.status, updatingTo: tag && tag.replace(/^v/, '') });
+    if (p === '/api/update/check') { await updater.check(); return json(res, 200, updater.status); }
+    const to = await updater.install();
+    return json(res, 200, { ...updater.status, updatingTo: to });
   }
 
   // What this OS can do, so the page hides buttons that would only fail.
@@ -559,6 +560,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const b = JSON.parse(body);
       if (typeof b.name === 'string') config.name = b.name.trim().slice(0, 40);
+      if (typeof b.autoUpdate === 'boolean') { config.autoUpdate = b.autoUpdate; updater.status.enabled = b.autoUpdate; }
       if (typeof b.moodleUrl === 'string') {
         const u = b.moodleUrl.trim();
         if (u && !/^https:\/\/[^\s]+$/.test(u)) throw new Error('the Moodle URL must start with https://');

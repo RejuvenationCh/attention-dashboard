@@ -115,8 +115,11 @@ deadlines. **Settings → Remind me** sets how many days ahead.
 ## Updates
 
 The dashboard updates itself: it checks for a new version every hour and restarts into it.
-Your tasks, sign-ins and settings are kept. **Settings** shows the version you have, and
-**Check for updates** there gets a new version straight away.
+Your tasks, sign-ins and settings are kept.
+
+In **Settings** you can see your version, **Check for updates** at any time, and read what's new
+before pressing **Install**. To choose when updates happen, switch **Automatic updates** off;
+the dashboard then tells you about new versions instead of installing them.
 
 ## Stopping and starting
 

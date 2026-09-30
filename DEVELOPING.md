@@ -16,8 +16,8 @@ git push --follow-tags
 
 Every install picks it up within an hour, or at once from Settings → Check for updates
 (`updater.js`). An install with local edits to
-tracked files skips the update and says so in Settings. A development checkout should have
-`"autoUpdate": false` in its `config.json`.
+tracked files skips the update and says so in Settings. A copy that already contains the newest
+release (a development checkout on `main`) is never moved back to it.
 
 ## Layout
 

@@ -3,6 +3,13 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.4.0 (30 September 2026)
+
+- **Check for updates** now only checks. When there is a new version, Settings says so, shows
+  what's new in it, and offers an **Install** button.
+- New **Automatic updates** switch in Settings, on by default. Turn it off to choose when to
+  install; the dashboard still checks every hour and tells you when a new version is out.
+
 ## 1.3.1 (30 September 2026)
 
 - Friendlier wording for people who don't use a calendar much: "Upcoming Schedule" is now

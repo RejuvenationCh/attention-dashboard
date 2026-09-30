@@ -318,30 +318,72 @@ async function saveProfile(change) {
   paintProfile();
   if ('moodleUrl' in change) restoreAccounts();   // the eLearn calendars appear or vanish
 }
-// Settings: check now instead of waiting for the hourly check. An update restarts the server,
-// so wait for the new version to answer, then reload the page onto it.
+// Settings: the version line, what's new in an available update, and the Install button.
+function paintUpdate() {
+  const u = _profile.update;
+  if (!u) return;
+  document.getElementById('settings-autoupdate').checked = u.enabled;
+  document.getElementById('settings-version').textContent = `Version ${u.version}. ` + (
+    u.error ? u.error + '.'
+    : u.available ? `Version ${u.latest} is available.`
+    : u.checkedAt ? 'Up to date.' : '');
+  const install = document.getElementById('install-btn');
+  install.hidden = !u.available;
+  install.textContent = `Install ${u.latest}`;
+  // CHANGELOG markdown, just the parts it uses: "## 1.2.0 (date)" headings and "- " items.
+  const notes = document.getElementById('update-notes');
+  notes.hidden = !(u.available && u.notes);
+  if (notes.hidden) return;
+  const inline = t => escape(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '$1');
+  notes.innerHTML = u.notes.split(/\n(?=## |- )/).map(block => block.startsWith('## ')
+    ? `<h4>What's new in ${inline(block.slice(3).split('\n')[0])}</h4>`
+    : block.startsWith('- ') ? `<ul><li>${inline(block.slice(2).replace(/\s*\n\s*/g, ' '))}</li></ul>` : '').join('');
+}
+
+// Check now instead of waiting for the hourly check. Only looks; Install is a separate step.
 async function checkForUpdates() {
   const btn = document.getElementById('update-btn');
   btn.disabled = true;
   btn.textContent = 'Checking…';
   try {
-    const r = await api('/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    if (r.updatingTo) {
-      showToast(`Updating to version ${r.updatingTo}. The page reloads when it is ready.`, null, 30);
-      for (let i = 0; i < 60; i++) {
-        await new Promise(ok => setTimeout(ok, 1000));
-        const c = await api('/api/config').catch(() => null);
-        if (c?.update?.version === r.updatingTo) { location.reload(); return; }
-      }
-      showToast('The update is taking a while. Reload the page in a minute.', null, 8);
-    } else {
-      showToast(r.error ? `Could not update: ${r.error}` : `You have the latest version (${r.version})`, null, 6);
-    }
+    _profile.update = await api('/api/update/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    paintUpdate();
+    const u = _profile.update;
+    if (u.error) showToast(`Could not check for updates: ${u.error}`, null, 6);
+    else if (!u.available) showToast(`You have the latest version (${u.version})`, null, 5);
   } catch (err) {
     showToast(`Could not check for updates: ${err.message}`, null, 6);
   } finally {
     btn.disabled = false;
     btn.textContent = 'Check for updates';
+  }
+}
+
+// Installing restarts the server, so wait for the new version to answer, then reload onto it.
+async function installUpdate() {
+  const btn = document.getElementById('install-btn');
+  btn.disabled = true;
+  btn.textContent = 'Installing…';
+  try {
+    const r = await api('/api/update/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    if (!r.updatingTo) {
+      _profile.update = r;
+      paintUpdate();
+      showToast(`Could not install: ${r.error || 'nothing to install'}`, null, 7);
+      return;
+    }
+    showToast(`Installing version ${r.updatingTo}. The page reloads when it is ready.`, null, 30);
+    for (let i = 0; i < 60; i++) {
+      await new Promise(ok => setTimeout(ok, 1000));
+      const c = await api('/api/config').catch(() => null);
+      if (c?.update?.version === r.updatingTo) { location.reload(); return; }
+    }
+    showToast('The update is taking a while. Reload the page in a minute.', null, 8);
+  } catch (err) {
+    showToast(`Could not install: ${err.message}`, null, 6);
+  } finally {
+    btn.disabled = false;
+    paintUpdate();
   }
 }
 
@@ -365,9 +407,7 @@ function paintProfile() {
   document.getElementById('settings-name').value = _profile.name;
   const m = document.getElementById('settings-moodle');
   m.value = '';   // never sent back: it carries a login token
-  const u = _profile.update;
-  document.getElementById('settings-version').textContent = !u ? '' : `Version ${u.version}. ` + (
-    u.error ? u.error + '.' : !u.enabled ? 'Automatic updates are off.' : 'Updates install automatically.');
+  paintUpdate();
   m.placeholder = _profile.moodle ? 'Connected (paste to replace)' : 'https://elearn.uc.ac.id/calendar/export_execute.php?…';
 }
 document.getElementById('date-line').textContent =

@@ -435,9 +435,18 @@
       </div>
     </div>
 
+    <div class="settings-row">
+      <label class="settings-label" for="settings-autoupdate">Automatic updates
+        <span class="settings-hint">Checks every hour. When off, new versions are shown here to install yourself.</span>
+      </label>
+      <input class="settings-check" id="settings-autoupdate" type="checkbox" onchange="saveProfile({ autoUpdate: this.checked })">
+    </div>
+
     <p class="settings-hint settings-version" id="settings-version"></p>
+    <div class="update-notes" id="update-notes" hidden></div>
     <div class="settings-version-actions">
       <button class="text-btn" id="update-btn" onclick="checkForUpdates()">Check for updates</button>
+      <button class="text-btn update-install" id="install-btn" onclick="installUpdate()" hidden></button>
       <button class="text-btn" onclick="stopDashboard()">Stop dashboard</button>
     </div>
 
