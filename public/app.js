@@ -28,15 +28,15 @@ try { hiddenCals = new Set(JSON.parse(localStorage.getItem(CAL_HIDDEN_KEY)) || [
 
 const calKey = (email, calId) => `${email}::${calId}`;
 
-// A type per calendar (Class, Work, ...), set in the Accounts card and used to filter Find an
-// Event. A display preference like the hidden set, so it lives in localStorage. eLearn courses
-// start as Class; choosing "No type" is stored too, so that default can be switched off.
+// A type per Google calendar (Class, Work, ...), set in the Accounts card and used to filter
+// Search Calendar. A display preference like the hidden set, so it lives in localStorage.
+// eLearn courses get none: they are all courses, so a tag on each would say nothing.
 const CAL_TYPES = ['Class', 'Work', 'Personal', 'Family', 'Other'];
 const CAL_TYPE_KEY = 'chris-dashboard-calendar-types-v1';
 let calTypes = {};
 try { calTypes = JSON.parse(localStorage.getItem(CAL_TYPE_KEY)) || {}; } catch {}
 const calTypeOf = (email, calId) =>
-  calTypes[calKey(email, calId)] ?? (String(calId).startsWith('moodle:') ? 'Class' : '');
+  String(calId).startsWith('moodle:') ? '' : calTypes[calKey(email, calId)] || '';
 function setCalType(ai, ci, type) {
   const a = accounts[ai], c = a.calendars[ci];
   calTypes[calKey(a.email, c.id)] = type;
@@ -219,7 +219,7 @@ function renderAccounts() {
             <input type="checkbox" ${isCalShown(a.email, c.id) ? 'checked' : ''} onchange="toggleCal(${ai}, ${ci})">
             <span class="cal-swatch" style="background:${c.color || '#94a3b8'}"></span>
             <span class="cal-name" title="${escape(c.name)}">${escape(c.name)}</span>
-            ${calTypeSelect(a, c, ai, ci)}
+            ${isMoodle ? '' : calTypeSelect(a, c, ai, ci)}
             ${isMoodle && c.id !== 'moodle:other' ? `<button class="cal-rename" title="Rename" onclick="event.preventDefault(); renameCourse(${ai}, ${ci})"><span class="msym">edit</span></button>` : ''}
             <button class="cal-busy${blocksTime(a.email, c.id) ? '' : ' off'}" onclick="event.preventDefault(); toggleCalBusy(${ai}, ${ci})"
               title="${blocksTime(a.email, c.id) ? 'Blocks your free time. Click to ignore' : 'Ignored when working out free time'}"

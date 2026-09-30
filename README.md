@@ -77,8 +77,8 @@ deadline reminders to Google Calendar is switched off until you connect one.
 
 ### Calendar types (optional)
 
-Hover a calendar in the Accounts card and click **+ Type** to mark it as Class, Work,
-Personal, Family or Other. eLearn courses start as Class. **Search Calendar** then shows a row of
+Hover a Google calendar in the Accounts card and click **+ Type** to mark it as Class, Work,
+Personal, Family or Other. **Search Calendar** then shows a row of
 buttons to see one type at a time.
 
 ### 2. Your name
