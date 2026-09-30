@@ -8,9 +8,11 @@ leave it.
 - **Tasks** with deadlines, snoozing, repeats and links to files or folders
 - **Course deadlines** from eLearn, soonest first
 - **Reminders** for things that are due, even with the dashboard closed
+- **Find an Event** to search what's coming up, filtered by calendar or by type (Class, Work…)
 - A **month view**, and replies to calendar invitations
+- **Updates itself**, and keeps your data through every update
 
-Works on macOS and Windows 10/11.
+Works on macOS and Windows 10/11. See [CHANGELOG.md](CHANGELOG.md) for what's new.
 
 ## Install
 
@@ -69,8 +71,15 @@ app"**. That is expected for a small app like this one: click **Advanced**, then
 
 You can connect more than one Google account. Tick or untick calendars in the Accounts card
 to show or hide them.
-Each calendar can also get a type (Class, Work, Personal, Family, Other): hover a calendar in
-the Accounts card and click **+ Type**. Find an Event can then show one type at a time.
+
+Without a Google account the dashboard still works for tasks and eLearn deadlines; adding
+deadline reminders to Google Calendar is switched off until you connect one.
+
+### Calendar types (optional)
+
+Hover a calendar in the Accounts card and click **+ Type** to mark it as Class, Work,
+Personal, Family or Other. eLearn courses start as Class. **Find an Event** then shows a row of
+buttons to see one type at a time.
 
 ### 2. Your name
 
@@ -129,16 +138,19 @@ cannot. To move to another computer, copy these files from the folder: `tasks.db
 - **It doesn't open.** Run the install step again; it is safe to repeat. If it still fails,
   `dashboard.log` in the folder says why.
 - **A Google account says "Signed out".** Click **Reconnect** next to it.
+- **Stop dashboard doesn't stay stopped (macOS).** Installs from before version 1.3.0 need the
+  install step run once more; after that it stays stopped.
 
 ## Uninstall
 
-**macOS**, in Terminal:
+**macOS**, in Terminal (this also stops it):
 
 ```bash
 launchctl bootout gui/$UID/com.attention-dashboard
 rm ~/Library/LaunchAgents/com.attention-dashboard.plist
 ```
 
-**Windows:** open **Task Scheduler**, delete the task **Attention Dashboard**, then restart.
+**Windows:** in the dashboard, click **Settings → Stop dashboard**. Then open **Task Scheduler**
+and delete the task **Attention Dashboard**.
 
 Then delete the `attention-dashboard` folder.

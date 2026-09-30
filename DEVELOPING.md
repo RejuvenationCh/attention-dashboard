@@ -7,12 +7,15 @@ Vanilla HTML/CSS/JS and a zero-dependency Node server (`node:sqlite`, Node ≥ 2
 
 Installs only move when there is a new version tag, so committing to `main` is safe:
 
+Add the release's notes to `CHANGELOG.md` and commit them first, then:
+
 ```bash
 npm version patch   # or minor / major: bumps package.json, commits, tags vX.Y.Z
 git push --follow-tags
 ```
 
-Every install picks it up within about 6 hours (`updater.js`). An install with local edits to
+Every install picks it up within an hour, or at once from Settings → Check for updates
+(`updater.js`). An install with local edits to
 tracked files skips the update and says so in Settings. A development checkout should have
 `"autoUpdate": false` in its `config.json`.
 
