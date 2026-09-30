@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com" rel="preconnect">
 <link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,0&icon_names=account_circle,add,add_task,calendar_add_on,check,check_circle,chevron_left,chevron_right,close,edit,event,event_available,event_busy,event_list,event_note,expand_less,expand_more,flag,folder_open,link,mail,notifications,notifications_active,notifications_none,outlined_flag,push_pin,refresh,repeat,schedule,school,search,settings,star,star_border,task,task_alt,undo,vertical_align_top,videocam,warning&display=swap" rel="stylesheet">
+<script src="appearance.js"></script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -280,6 +281,8 @@
       <button class="icon-btn" onclick="closeSettings()"><span class="msym">close</span></button>
     </div>
 
+    <h3 class="settings-section">You</h3>
+
     <div class="settings-row">
       <label class="settings-label" for="settings-name">Your name
         <span class="settings-hint">For the greeting.</span>
@@ -293,6 +296,8 @@
       </label>
       <input class="todo-input settings-text" id="settings-moodle" type="password" autocomplete="off" onchange="saveProfile({ moodleUrl: this.value })">
     </div>
+
+    <h3 class="settings-section">Tasks</h3>
 
     <div class="settings-row">
       <label class="settings-label" for="settings-remind">Remind me
@@ -309,17 +314,6 @@
     </div>
 
     <div class="settings-row">
-      <label class="settings-label" for="settings-day-start">Day window
-        <span class="settings-hint">What the progress ring measures, between these hours.</span>
-      </label>
-      <div class="settings-pair">
-        <input class="todo-input settings-num" id="settings-day-start" type="number" min="0" max="23" onchange="settingsChanged()">
-        <span>to</span>
-        <input class="todo-input settings-num" id="settings-day-end" type="number" min="1" max="24" onchange="settingsChanged()">
-      </div>
-    </div>
-
-    <div class="settings-row">
       <label class="settings-label" for="settings-sort">Default task sort
         <span class="settings-hint">What the list falls back to on a fresh visit.</span>
       </label>
@@ -328,33 +322,6 @@
         <option value="deadline">By deadline</option>
         <option value="priority">By priority</option>
       </select>
-    </div>
-
-    <div class="settings-row">
-      <label class="settings-label" for="settings-week">Week starts on
-        <span class="settings-hint">Sets the month grid's columns.</span>
-      </label>
-      <select class="task-sort" id="settings-week" onchange="settingsChanged()">
-        <option value="1">Monday</option>
-        <option value="0">Sunday</option>
-      </select>
-    </div>
-
-    <div class="settings-row">
-      <label class="settings-label" for="settings-deadlinetime">Deadline time
-        <span class="settings-hint">For a task with only a date. A course deadline uses its own due time from eLearn.</span>
-      </label>
-      <div class="settings-pair">
-        <select class="task-sort" id="settings-deadlinetime" onchange="settingsChanged()"></select>
-        <select class="task-sort" id="settings-deadlinewarn" onchange="settingsChanged()">
-          <option value="0">At the time</option>
-          <option value="30">30 min before</option>
-          <option value="60">1 hour before</option>
-          <option value="180">3 hours before</option>
-          <option value="1440">1 day before</option>
-          <option value="2880">2 days before</option>
-        </select>
-      </div>
     </div>
 
     <div class="settings-row">
@@ -385,6 +352,60 @@
     </div>
 
     <div class="settings-row">
+      <label class="settings-label" for="settings-autotask">New course deadlines
+        <span class="settings-hint">Turn a newly posted eLearn deadline into a task automatically.</span>
+      </label>
+      <input class="settings-check" id="settings-autotask" type="checkbox" onchange="settingsChanged()">
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-deadlinetime">Deadline time
+        <span class="settings-hint">For a task with only a date. A course deadline uses its own due time from eLearn.</span>
+      </label>
+      <div class="settings-pair">
+        <select class="task-sort" id="settings-deadlinetime" onchange="settingsChanged()"></select>
+        <select class="task-sort" id="settings-deadlinewarn" onchange="settingsChanged()">
+          <option value="0">At the time</option>
+          <option value="30">30 min before</option>
+          <option value="60">1 hour before</option>
+          <option value="180">3 hours before</option>
+          <option value="1440">1 day before</option>
+          <option value="2880">2 days before</option>
+        </select>
+      </div>
+    </div>
+
+    <h3 class="settings-section">Calendar</h3>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-week">Week starts on
+        <span class="settings-hint">Sets the month grid's columns.</span>
+      </label>
+      <select class="task-sort" id="settings-week" onchange="settingsChanged()">
+        <option value="1">Monday</option>
+        <option value="0">Sunday</option>
+      </select>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-day-start">Day window
+        <span class="settings-hint">What the progress ring measures, between these hours.</span>
+      </label>
+      <div class="settings-pair">
+        <input class="todo-input settings-num" id="settings-day-start" type="number" min="0" max="23" onchange="settingsChanged()">
+        <span>to</span>
+        <input class="todo-input settings-num" id="settings-day-end" type="number" min="1" max="24" onchange="settingsChanged()">
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-writecal">Deadline calendar
+        <span class="settings-hint">Where "Add deadline reminder to Google Calendar" writes.</span>
+      </label>
+      <select class="task-sort" id="settings-writecal" onchange="settingsChanged()"></select>
+    </div>
+
+    <div class="settings-row">
       <label class="settings-label" for="settings-nowline">Now line
         <span class="settings-hint">The line marking the current time across an event you are in. 0 hides it.</span>
       </label>
@@ -393,20 +414,6 @@
                oninput="previewNowLine(this.value)" onchange="settingsChanged()">
         <span class="settings-num-label" id="settings-nowline-val">9%</span>
       </div>
-    </div>
-
-    <div class="settings-row">
-      <label class="settings-label" for="settings-autotask">New course deadlines
-        <span class="settings-hint">Turn a newly posted eLearn deadline into a task automatically.</span>
-      </label>
-      <input class="settings-check" id="settings-autotask" type="checkbox" onchange="settingsChanged()">
-    </div>
-
-    <div class="settings-row">
-      <label class="settings-label" for="settings-writecal">Deadline calendar
-        <span class="settings-hint">Where "Add deadline reminder to Google Calendar" writes.</span>
-      </label>
-      <select class="task-sort" id="settings-writecal" onchange="settingsChanged()"></select>
     </div>
 
     <div class="settings-row dr-section">
@@ -434,6 +441,54 @@
         <button class="todo-btn todo-btn-primary" onclick="addDayReminder()">Add</button>
       </div>
     </div>
+
+    <h3 class="settings-section">Appearance</h3>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-theme">Theme
+        <span class="settings-hint">System follows your computer's light or dark setting.</span>
+      </label>
+      <select class="task-sort" id="settings-theme" onchange="appearanceChanged()">
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-accent">Accent colour
+        <span class="settings-hint">Buttons, links and highlights.</span>
+      </label>
+      <select class="task-sort" id="settings-accent" onchange="appearanceChanged()">
+        <option value="blue">Blue</option>
+        <option value="teal">Teal</option>
+        <option value="purple">Purple</option>
+        <option value="rose">Rose</option>
+        <option value="amber">Amber</option>
+      </select>
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-reduce">Reduce effects
+        <span class="settings-hint">Turns off the glass blur and animations. Faster on older computers.</span>
+      </label>
+      <input class="settings-check" id="settings-reduce" type="checkbox" onchange="appearanceChanged()">
+    </div>
+
+    <h3 class="settings-section">Your data</h3>
+
+    <div class="settings-row">
+      <label class="settings-label">Backup
+        <span class="settings-hint">Your tasks, reminders, course names and settings in one file. Google sign-ins and the eLearn link are left out, so you reconnect those after restoring.</span>
+      </label>
+      <div class="settings-stack">
+        <button class="todo-btn todo-btn-cancel" onclick="downloadBackup()">Download</button>
+        <button class="todo-btn todo-btn-cancel" onclick="document.getElementById('restore-file').click()">Restore…</button>
+        <input type="file" id="restore-file" accept="application/json,.json" hidden onchange="restoreBackup(this.files[0]); this.value = ''">
+      </div>
+    </div>
+
+    <h3 class="settings-section">App</h3>
 
     <div class="settings-row">
       <label class="settings-label" for="settings-autoupdate">Automatic updates

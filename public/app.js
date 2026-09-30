@@ -332,6 +332,21 @@ async function saveProfile(change) {
   paintProfile();
   if ('moodleUrl' in change) restoreAccounts();   // the eLearn calendars appear or vanish
 }
+// Settings → Appearance. appearance.js applies it; this only mirrors it into the controls.
+function paintAppearance() {
+  const a = window.appearance.read();
+  document.getElementById('settings-theme').value = a.theme;
+  document.getElementById('settings-accent').value = a.accent;
+  document.getElementById('settings-reduce').checked = !!a.reduce;
+}
+function appearanceChanged() {
+  window.appearance.save({
+    theme: document.getElementById('settings-theme').value,
+    accent: document.getElementById('settings-accent').value,
+    reduce: document.getElementById('settings-reduce').checked,
+  });
+}
+
 // Settings: the version line, what's new in an available update, and the Install button.
 function paintUpdate() {
   const u = _profile.update;
@@ -1511,6 +1526,7 @@ const hourLabel = h => `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`;
 function openSettings() {
   paintSettings();
   paintProfile();
+  paintAppearance();
   renderDayReminderSettings();
   document.getElementById('settings-overlay').classList.add('open');
 }
