@@ -718,6 +718,17 @@ main {
   padding: 11px 0;
 }
 .settings-row + .settings-row { border-top: 1px solid rgba(var(--k),0.06); }
+.welcome { padding: 20px 24px; }
+.welcome-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.welcome-step { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.welcome-step + .welcome-step { border-top: 1px solid var(--line); }
+.welcome-step > .msym { font-size: 22px; color: var(--ink-3); }
+.welcome-step.done > .msym { color: var(--primary); }
+.welcome-step.done .welcome-title { color: var(--ink-3); text-decoration: line-through; }
+.welcome-text { flex: 1; min-width: 0; }
+.welcome-title { font-size: 14px; font-weight: 500; }
+.welcome-hint { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
+.welcome-step .todo-btn { flex: none; padding: 7px 16px; }
 .settings-section {
   margin: 20px 0 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--primary);

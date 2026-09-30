@@ -115,6 +115,9 @@ let failedAccounts = [];
 async function restoreAccounts() {
   let list = [];
   try { list = await api('/api/accounts'); } catch {}
+  // Rebuilt from scratch: this also runs again after the eLearn link changes in Settings,
+  // and appending to the old list showed every account twice.
+  accounts = [];
   failedAccounts = [];
   for (const entry of list) {
     // Moodle arrives with its calendars attached and nothing to sign in to.
@@ -208,6 +211,8 @@ function showDisconnected() {
 }
 
 function renderAccounts() {
+  _accountsLoaded = true;
+  renderWelcome();
   const el = document.getElementById('accounts-list');
   if (!accounts.length && !failedAccounts.length) {
     el.innerHTML = `<div class="acct-empty">No account connected yet.</div>
@@ -322,7 +327,9 @@ let _platform = { canPickFolder: true, notifyHint: '' };
 async function loadProfile() {
   [_profile, _platform] = await Promise.all([api('/api/config'), api('/api/platform')]).catch(() => [_profile, _platform]);
   document.body.classList.toggle('no-picker', !_platform.canPickFolder);
+  _profileLoaded = true;
   setGreeting();
+  renderWelcome();
 }
 async function saveProfile(change) {
   try {
@@ -330,7 +337,49 @@ async function saveProfile(change) {
   } catch (err) { showToast(`Could not save: ${err.message}`, null, 6); return; }
   setGreeting();
   paintProfile();
+  renderWelcome();
   if ('moodleUrl' in change) restoreAccounts();   // the eLearn calendars appear or vanish
+}
+
+// Get started: the three things a new install needs, ticked off as they happen. Waits for both
+// the profile and the accounts to load, so a set-up dashboard never flashes it.
+const WELCOME_KEY = 'attention-welcome-dismissed-v1';
+let _profileLoaded = false, _accountsLoaded = false;
+function renderWelcome() {
+  const card = document.getElementById('welcome-card');
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(WELCOME_KEY) === '1'; } catch {}
+  const steps = [
+    { done: googleAccounts().length > 0 || failedAccounts.length > 0, title: 'Connect Google Calendar',
+      hint: 'Your events and free time, and reminders for deadlines.', action: 'addAccount()', label: 'Connect' },
+    { done: !!_profile.name, title: 'Add your name', hint: 'For the greeting.',
+      action: "openSettingsAt('settings-name')", label: 'Add' },
+    { done: !!_profile.moodle, title: 'Add your eLearn calendar (optional)', hint: 'Course deadlines, soonest first.',
+      action: "openSettingsAt('settings-moodle')", label: 'Add' },
+  ];
+  card.hidden = dismissed || !_profileLoaded || !_accountsLoaded || steps.every(s => s.done);
+  if (card.hidden) return;
+  card.innerHTML = `
+    <div class="welcome-head">
+      <h2 class="card-h2">Get started</h2>
+      <button class="icon-btn" onclick="dismissWelcome()" title="Hide"><span class="msym">close</span></button>
+    </div>
+    ${steps.map(s => `
+      <div class="welcome-step${s.done ? ' done' : ''}">
+        <span class="msym">${s.done ? 'check_circle' : 'radio_button_unchecked'}</span>
+        <div class="welcome-text"><div class="welcome-title">${s.title}</div><div class="welcome-hint">${s.hint}</div></div>
+        ${s.done ? '' : `<button class="todo-btn todo-btn-primary" onclick="${s.action}">${s.label}</button>`}
+      </div>`).join('')}`;
+}
+function dismissWelcome() {
+  try { localStorage.setItem(WELCOME_KEY, '1'); } catch {}
+  renderWelcome();
+}
+function openSettingsAt(id) {
+  openSettings();
+  const el = document.getElementById(id);
+  el.scrollIntoView({ block: 'center' });
+  el.focus();
 }
 // Settings → Appearance. appearance.js applies it; this only mirrors it into the controls.
 function paintAppearance() {
