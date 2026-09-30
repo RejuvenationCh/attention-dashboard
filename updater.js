@@ -3,7 +3,7 @@
 // Skipped when this isn't a clone, when tracked files have local edits (a developer's
 // checkout, or someone's own tweaks, which must never be overwritten), or with "autoUpdate": false
 // in config.json. Personal data is all gitignored, so a checkout never touches it.
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -51,7 +51,8 @@ async function check() {
     const latest = tags.reduce((best, t) => newer(t, best) ? t : best, 'v' + VERSION);
     // A copy that already contains the release (a development checkout on main) is not behind,
     // whatever package.json says; checking the tag out would move it backwards.
-    const behind = newer(latest, VERSION)
+    // A version that failed to start before (the watchdog went back from it) is not offered again.
+    const behind = newer(latest, VERSION) && latest.slice(1) !== status.skipVersion
       && !(await git('merge-base', '--is-ancestor', latest, 'HEAD').then(() => true, () => false));
     Object.assign(status, { latest: latest.replace(/^v/, ''), available: behind, checkedAt: new Date().toISOString(), error: null,
                             notes: behind ? await notesFor(latest) : '' });
@@ -61,6 +62,36 @@ async function check() {
 }
 
 let restartFn = () => process.exit(1);
+let serverPort = 0;
+const ROLLBACK_FILE = path.join(DIR, 'update-rollback.json');
+
+// Runs as its own process, started by the version being replaced, because a new version that
+// crashes on start never runs any of its own code. It waits up to 90 s for the new version to
+// answer; if it doesn't, it checks the previous version back out and leaves a note for it.
+// On macOS the LaunchAgent is still restarting the crashed server, so the next attempt finds the
+// old code; on Windows nothing restarts it, so the watchdog starts it.
+// ponytail: only catches "never answers"; a new version that starts but misbehaves stays.
+const WATCHDOG = `
+const { execFileSync, spawn } = require('child_process');
+const fs = require('fs'), path = require('path');
+const { AD_DIR: dir, AD_PORT: port, AD_FROM: from, AD_TO: to } = process.env;
+const want = to.slice(1), until = Date.now() + 90000;
+(async () => {
+  while (Date.now() < until) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const c = await (await fetch('http://127.0.0.1:' + port + '/api/config')).json();
+      if (c.update && c.update.version === want) return;
+    } catch {}
+  }
+  execFileSync('git', ['checkout', '--quiet', '--detach', from], { cwd: dir });
+  fs.writeFileSync(path.join(dir, 'update-rollback.json'),
+    JSON.stringify({ failed: want, restored: from.slice(1), at: new Date().toISOString() }));
+  if (process.platform === 'win32') {
+    const log = fs.openSync(path.join(dir, 'dashboard.log'), 'a');
+    spawn(process.execPath, ['server.js'], { cwd: dir, detached: true, stdio: ['ignore', log, log], windowsHide: true }).unref();
+  }
+})();`;
 
 // Move to the newest release and restart shortly after, so the page can be told first.
 // Returns the version it is moving to, or null with status.error saying why not.
@@ -70,22 +101,46 @@ async function install() {
     status.error = `version ${status.latest} is out, but local edits to the app's files block the update`;
     return null;
   }
+  const from = (await git('rev-parse', 'HEAD')), to = 'v' + status.latest;
   try {
-    await git('checkout', '--quiet', '--detach', 'v' + status.latest);
+    await git('checkout', '--quiet', '--detach', to);
   } catch (err) {
     status.error = err.message.split('\n')[0];
     return null;
   }
-  console.log(`[update] v${VERSION} → v${status.latest}, restarting`);
+  if (serverPort) {
+    spawn(process.execPath, ['-e', WATCHDOG], {
+      cwd: DIR, detached: true, stdio: 'ignore', windowsHide: true,
+      env: { ...process.env, AD_DIR: DIR, AD_PORT: String(serverPort), AD_FROM: from, AD_TO: to },
+    }).unref();
+  }
+  console.log(`[update] v${VERSION} → ${to}, restarting`);
   setTimeout(restartFn, 500);
   return status.latest;
 }
 
 // Hourly: always check, install only when automatic updates are on. `config` is the live
 // object Settings edits, so switching it takes effect without a restart.
-// restart: how this OS brings the server back (platform.restart).
-function start(config, restart) {
+// restart: how this OS brings the server back (platform.restart). save: writes config.json.
+function start(config, restart, port, save) {
   restartFn = restart;
+  serverPort = port;
+  // A note from the watchdog: the last update never started, and this is the version it went
+  // back to. Remembered in config so automatic updates skip that version for good.
+  try {
+    const rb = JSON.parse(fs.readFileSync(ROLLBACK_FILE, 'utf8'));
+    fs.unlinkSync(ROLLBACK_FILE);
+    config.rolledBack = rb;
+    config.skipVersion = rb.failed;
+    save();
+    console.error(`[update] ${rb.failed} did not start; back on ${rb.restored}`);
+  } catch { /* no rollback happened */ }
+  // Running a version past the one that failed: that episode is over.
+  if (config.skipVersion && newer(VERSION, config.skipVersion)) {
+    delete config.skipVersion; delete config.rolledBack; save();
+  }
+  status.rolledBack = config.rolledBack || null;
+  status.skipVersion = config.skipVersion || null;
   const run = async () => {
     status.enabled = config.autoUpdate !== false;
     await check();

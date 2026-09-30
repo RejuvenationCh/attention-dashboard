@@ -643,7 +643,7 @@ server.on('error', err => {
 // Loopback only: this server hands out Google access tokens, so it must never be reachable
 // from the network (campus Wi-Fi). Browsers fall back from ::1 to 127.0.0.1 for "localhost".
 server.listen(PORT, '127.0.0.1', () => console.log(`Attention Dashboard v${updater.VERSION} → http://localhost:${PORT}`));
-updater.start(config, platform.restart);
+updater.start(config, platform.restart, PORT, () => saveConfig(config));
 
 // What's new, once per update: the CHANGELOG entries since the version that ran last. Installs
 // from before 1.5 never recorded one; if this one was already in use, show just this version.

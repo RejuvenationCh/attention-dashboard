@@ -402,8 +402,10 @@ function paintUpdate() {
   const u = _profile.update;
   if (!u) return;
   document.getElementById('settings-autoupdate').checked = u.enabled;
+  const rb = u.rolledBack;
   document.getElementById('settings-version').textContent = `Version ${u.version}. ` + (
-    u.error ? u.error + '.'
+    rb && !u.available ? `Version ${rb.failed} did not start, so the dashboard went back to ${rb.restored}. It will wait for the next version.`
+    : u.error ? u.error + '.'
     : u.available ? `Version ${u.latest} is available.`
     : u.checkedAt ? 'Up to date.' : '');
   const install = document.getElementById('install-btn');

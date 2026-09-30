@@ -20,3 +20,8 @@ reminders.json
 # Per-user course-name table, filled in from the UI.
 courses.json
 config.json
+
+# Written by the update watchdog and read once on the next start.
+update-rollback.json
+# Automatic daily backups.
+backups/
