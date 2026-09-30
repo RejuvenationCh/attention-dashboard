@@ -30,6 +30,12 @@ so in Settings. A copy that already contains the newest release (a development c
 | `platform.js` | Everything OS-specific: reveal, folder picker, notifications, restart |
 | `moodle.js` | eLearn ICS feed → Google-Calendar-shaped events (`node test-moodle.js`) |
 | `updater.js` | Follows release tags (`node updater.js` self-checks the version compare) |
+| `release.js` | `npm run release -- patch`: refuses unless clean, on `main`, tested, and in the changelog |
+| `public/appearance.js` | Theme, accent, text size, compact, clock, hidden cards; applied in `<head>` before the page paints |
+| `public/i18n.js` | Bahasa Indonesia: translates the page as it is drawn (exact phrases, then patterns). New UI text needs an entry there; anything inside the `SKIP` selectors (the user's own content) is never touched |
+| `public/quickadd.js` | The quick add parser, English and Indonesian (`node test-quickadd.js`) |
+| `check-icons.js` | The icon font only carries the icons in `icon_names=`; this fails if the code uses one that isn't listed |
+| `test-smoke.js` | Starts a real server from a fresh copy and exercises the API, backup, diagnostics and fences |
 | `install.sh`, `install.ps1`, `install-port.js` | Installers; the last checks Node and picks the port |
 | `oauth-client.json` | Shared Google **Desktop app** client. Its secret is public on purpose: installed apps can't keep one, and a Desktop client accepts `http://localhost:<any port>` unregistered |
 
