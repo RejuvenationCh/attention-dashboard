@@ -1,7 +1,40 @@
 # Attention Dashboard
 
-Chris's personal calendar/todo dashboard, self-hosted on localhost. Vanilla HTML/CSS/JS,
-zero npm dependencies (Node ≥ 20.12).
+A personal calendar/todo dashboard, self-hosted on localhost. Vanilla HTML/CSS/JS,
+zero npm dependencies (Node ≥ 22.13).
+
+## Install (for anyone)
+
+Needs [Node.js](https://nodejs.org) 22.13+ and git. You need access to this repo on GitHub.
+
+```bash
+git clone https://github.com/RejuvenationCh/attention-dashboard.git
+cd attention-dashboard
+./install.sh
+```
+
+On Windows, run `powershell -ExecutionPolicy Bypass -File install.ps1` instead (not yet tested
+on a real Windows machine). The installer picks a free port, starts the dashboard at every login
+and opens it. Then: **Connect Google Calendar**, and put your name and eLearn calendar URL in
+**Settings**. Google shows "Google hasn't verified this app" once: Advanced → Continue.
+
+Your tasks, sign-ins and settings stay on your computer (all gitignored). The dashboard updates
+itself: every few hours it checks for a newer release and restarts into it. Settings shows the
+version. To turn that off, add `"autoUpdate": false` to `config.json`.
+
+## Releasing an update
+
+Commit to `main` as usual; installs only move when there is a new version tag:
+
+```bash
+npm version patch   # or minor / major: bumps package.json, commits, tags vX.Y.Z
+git push --follow-tags
+```
+
+Every install picks it up within about 6 hours. One with local edits to tracked files skips the
+update and says so in Settings.
+
+## Chris's own setup
 
 ## Run
 
