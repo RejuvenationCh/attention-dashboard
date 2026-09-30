@@ -34,12 +34,13 @@ function readNames() {
 const displayName = (course, names) =>
   names[course] || names[course.replace(/^\d+_/, '')] || course;
 
-// The dashboard's own timezone (see `TZ` in public/app.js). Indonesia has no
-// DST, so a fixed offset matches every other date calculation in the app.
-// ponytail: fixed offset — swap for Intl.DateTimeFormat boundaries if this ever
-// runs somewhere that observes DST.
-const APP_OFFSET = '+08:00';
-const APP_OFFSET_MS = 8 * 3600 * 1000;
+// The dashboard runs in the machine's own zone (see `TZ` in public/app.js), so times
+// are labelled with that zone's offset at the instant in question.
+const pad = n => String(n).padStart(2, '0');
+function localOffset(ms) {
+  const m = -new Date(ms).getTimezoneOffset();
+  return (m < 0 ? '-' : '+') + pad(Math.floor(Math.abs(m) / 60)) + ':' + pad(Math.abs(m) % 60);
+}
 
 // Per-course colours. Moodle exports none, so courses get one each in a stable
 // order; `calendars[].color` is what evColor() reads.
@@ -47,16 +48,17 @@ const PALETTE = ['#3b82f6', '#7c3aed', '#0d9488', '#e11d48', '#d97706', '#0891b2
 
 const configured = () => !!process.env.MOODLE_ICS_URL;
 
-// 2026-09-15T01:00:00Z → 2026-09-15T09:00:00+08:00.
+// 2026-09-15T01:00:00Z → 2026-09-15T08:00:00+08:00 (on a WITA machine).
 // The first 10 characters must be the *local* date: renderTlEvent, loadEvents'
 // byDate bucketing and getFreeBlocks all slice or startsWith on them.
 //
-// The feed's clock is shifted to eLearn's own, Jakarta time (GMT+7), before being labelled +08:00.
+// The feed's clock is shifted to eLearn's own, Jakarta time (GMT+7), before being labelled with the local offset.
 // So "due 23:59" reads 23:59 here, the same as on eLearn's page, instead of 00:59 the next day.
-// That lands every deadline one hour *before* its real cutoff — the safe direction to be wrong in.
+// East of Jakarta that lands a deadline *before* its real cutoff, the safe direction to be wrong in;
+// on a WIB machine the shift changes nothing.
 const ELEARN_OFFSET_MS = 7 * 3600 * 1000;
 function toAppIso(ms) {
-  return new Date(ms + ELEARN_OFFSET_MS).toISOString().slice(0, 19) + APP_OFFSET;
+  return new Date(ms + ELEARN_OFFSET_MS).toISOString().slice(0, 19) + localOffset(ms);
 }
 
 // RFC 5545 escaping, in a single pass so "\\n" (a literal backslash then n)
@@ -88,7 +90,7 @@ function parseIcs(text) {
   return events;
 }
 
-// → { date: 'YYYY-MM-DD' } for all-day, or { dateTime: '…+08:00' } for timed.
+// → { date: 'YYYY-MM-DD' } for all-day, or { dateTime: '…+HH:MM' } for timed.
 function parseDt(prop) {
   if (!prop) return null;
   const v = prop.value.trim();
@@ -100,7 +102,7 @@ function parseDt(prop) {
   // Without one Moodle is giving wall-clock time; take it at face value.
   return {
     dateTime: z ? toAppIso(Date.UTC(+Y, +M - 1, +D, +h, +mi, +s))
-                : `${Y}-${M}-${D}T${h}:${mi}:${s}${APP_OFFSET}`,
+                : `${Y}-${M}-${D}T${h}:${mi}:${s}${localOffset(new Date(+Y, +M - 1, +D, +h, +mi, +s).getTime())}`,
   };
 }
 
@@ -193,7 +195,7 @@ async function feed() {
   // A rotated token (or a password change) gets an HTML login/error page back,
   // which would otherwise parse as "a calendar with no events".
   if (!text.includes('BEGIN:VCALENDAR')) {
-    const msg = 'Moodle did not return a calendar — re-copy the export URL into .env';
+    const msg = 'Moodle did not return a calendar — re-copy the export URL into Settings';
     cache = { ...cache, failedAt: Date.now(), err: msg };
     if (cache.data) { console.error('[moodle] serving cached feed —', msg); return cache.data; }
     throw new Error(msg);

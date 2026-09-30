@@ -2,6 +2,8 @@
 // Covers the Moodle ICS → Google-shape conversion: the timezone shift that the
 // dashboard's .substring(0,10) date bucketing depends on, RFC 5545 folding and
 // escaping, and the guards around a feed that stops returning a calendar.
+// The expected strings below are written for a WITA machine; pin it so the result doesn't depend on where this runs.
+process.env.TZ = 'Asia/Makassar';
 const assert = require('assert');
 const moodle = require('./moodle');
 

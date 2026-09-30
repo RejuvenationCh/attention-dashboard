@@ -1,23 +1,48 @@
 // Static file server + Google OAuth (refresh-token)
 // + the Moodle (eLearn UC) calendar feed.
-// Zero dependencies (Node >= 20.12).
+// Zero dependencies (Node >= 22.13).
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execFile } = require('child_process');
+const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');   // built in since Node 22, no dependency
 const moodle = require('./moodle');                // reads/proxies the campus calendar feed
+const platform = require('./platform');            // the only OS-specific code
+const updater = require('./updater');              // follows new release tags
 
 try { process.loadEnvFile(); } catch { /* no .env yet */ }
 
-const PORT = 3000;
+// Per-install settings, written by the installer and the settings panel. Gitignored.
+// .env still works and wins for the Google client, so an existing setup keeps running.
+const CONFIG_FILE = path.join(__dirname, 'config.json');
+function loadConfig() {
+  try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch { return {}; }
+}
+function saveConfig(c) { fs.writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2) + '\n', { mode: 0o600 }); }
+const config = loadConfig();
+if (config.moodleUrl && !process.env.MOODLE_ICS_URL) process.env.MOODLE_ICS_URL = config.moodleUrl;
+
+// The shared Google client. A Desktop-app client's secret is not confidential (Google
+// documents installed apps shipping it), so it can be committed in oauth-client.json.
+try {
+  // Accepts the file exactly as Google's console downloads it ({ installed: {...} }).
+  const f = JSON.parse(fs.readFileSync(path.join(__dirname, 'oauth-client.json'), 'utf8'));
+  const c = f.installed || f;
+  process.env.GOOGLE_CLIENT_ID ||= c.client_id;
+  process.env.GOOGLE_CLIENT_SECRET ||= c.client_secret;
+} catch { /* not shipped yet: .env must carry them */ }
+
+const PORT = Number(process.env.PORT) || config.port || 3000;
 const PUBLIC = path.join(__dirname, 'public');
 const TOKENS_FILE = path.join(__dirname, 'tokens.json');
 const TASKS_FILE = path.join(__dirname, 'tasks.json');   // legacy, migrated into SQLite on boot
 const DB_FILE = path.join(__dirname, 'tasks.db');
 const REDIRECT_URI = `http://localhost:${PORT}/oauth/callback`;
 const SCOPES = 'openid email https://www.googleapis.com/auth/calendar';
+// localhost and 127.0.0.1 are the same server; either may be in the address bar.
+const ORIGINS = new Set([`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`]);
+const badOrigin = req => req.headers.origin && !ORIGINS.has(req.headers.origin);
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
 
 // ─── Task store (SQLite) ──────────────────────────────────────────
@@ -121,11 +146,10 @@ if (fs.existsSync(TASKS_FILE)) {
 // ─── Due reminders ────────────────────────────────────────────────
 // Checked here rather than in the page so they arrive with the dashboard closed. Every 20
 // minutes is one SQLite read and nothing else unless something is due — negligible.
-// Delivered through osascript, not the browser: a Safari web app on localhost cannot get
-// notification permission.
+// Delivered by the OS (platform.js), not the browser: a Safari web app on localhost cannot get
+// notification permission. Dates are in the machine's own zone, as in public/app.js.
 const REMINDERS_FILE = path.join(__dirname, 'reminders.json');
 const REMIND_EVERY = 20 * 60 * 1000;
-const TZ = 'Asia/Makassar';   // same as public/app.js
 
 const REMINDER_DEFAULTS = { on: false, aheadDays: 0, reminded: {}, days: [], dayHour: 7, daysSentOn: null,
                             doneDeadlines: [] };   // course deadline ids marked submitted by hand
@@ -135,16 +159,8 @@ function loadReminders() {
 }
 function saveReminders(r) { fs.writeFileSync(REMINDERS_FILE, JSON.stringify(r, null, 2)); }
 
-// title and body go in as argv, so nothing in them is ever parsed as AppleScript.
-function notifyMac(title, body) {
-  return new Promise((resolve, reject) => execFile('osascript', [
-    '-e', 'on run argv', '-e', 'display notification (item 2 of argv) with title (item 1 of argv)', '-e', 'end run',
-    String(title).slice(0, 120), String(body).slice(0, 500),
-  ], { timeout: 10000 }, err => err ? reject(err) : resolve()));
-}
-
-const ymdIn = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: TZ });
-const hourIn = () => Number(new Date().toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: TZ }));
+const ymdIn = (d = new Date()) => d.toLocaleDateString('en-CA');
+const hourIn = () => new Date().getHours();
 const daysBetween = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
 const plusDays = (ymd, n) => new Date(Date.parse(ymd) + n * 86400000).toISOString().slice(0, 10);
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -154,12 +170,12 @@ const dueWord = d => d < 0 ? 'Overdue' : d === 0 ? 'Due today' : `Due in ${d} da
 // showed them while it was open, which is too late to be useful.
 async function checkDayReminders(r, today) {
   if (r.daysSentOn === today || hourIn() < r.dayHour) return;
-  const weekday = new Date(today + 'T12:00:00+08:00').getUTCDay();
+  const weekday = new Date(today + 'T12:00:00').getDay();
   const mine = r.days.filter(x => x.day === today || x.day === String(weekday));
   r.daysSentOn = today;
   saveReminders(r);
   if (!mine.length) return;
-  await notifyMac(`${WEEKDAYS[weekday]} reminder${mine.length > 1 ? 's' : ''}`, mine.map(x => x.text).join('\n'))
+  await platform.notify(`${WEEKDAYS[weekday]} reminder${mine.length > 1 ? 's' : ''}`, mine.map(x => x.text).join('\n'))
     .catch(err => console.error('[remind]', err.message));
 }
 
@@ -197,7 +213,7 @@ async function checkDueReminders() {
   r.reminded = Object.fromEntries(all.map(t => [t.id, today]));   // rebuilt daily, cannot grow forever
   saveReminders(r);
   const lines = fresh.map(t => `${dueWord(daysBetween(today, t.deadline))}: ${t.title}`);
-  notifyMac(fresh.length === 1 ? 'Something needs you' : `${fresh.length} things need you`, lines.slice(0, 5).join('\n'))
+  platform.notify(fresh.length === 1 ? 'Something needs you' : `${fresh.length} things need you`, lines.slice(0, 5).join('\n'))
     .catch(err => console.error('[remind]', err.message));
 }
 setInterval(checkDueReminders, REMIND_EVERY).unref();
@@ -254,11 +270,17 @@ function json(res, code, body) {
 
 // Start consent. select_account lets a second account be added;
 // consent + offline access is what makes Google issue a refresh token.
+// `state` stops another site from feeding us its own code; PKCE binds the code to this server.
+const pending = new Map();   // state → { verifier, at }
+const b64url = buf => buf.toString('base64url');
 function oauthStart(res) {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
     res.writeHead(500, { 'Content-Type': 'text/html' });
-    return res.end('<h2>Missing credentials</h2><p>Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env, then restart the server.</p>');
+    return res.end('<h2>Missing credentials</h2><p>Put the Google client in oauth-client.json (or GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env), then restart the server.</p>');
   }
+  for (const [k, v] of pending) if (Date.now() - v.at > 600000) pending.delete(k);
+  const state = b64url(crypto.randomBytes(16)), verifier = b64url(crypto.randomBytes(32));
+  pending.set(state, { verifier, at: Date.now() });
   const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: REDIRECT_URI,
@@ -267,6 +289,9 @@ function oauthStart(res) {
     access_type: 'offline',
     prompt: 'consent select_account',
     include_granted_scopes: 'true',
+    state,
+    code_challenge: b64url(crypto.createHash('sha256').update(verifier).digest()),
+    code_challenge_method: 'S256',
   });
   res.writeHead(302, { Location: url });
   res.end();
@@ -278,6 +303,9 @@ async function oauthCallback(res, query) {
     res.end(`<h2>Sign-in failed</h2><p>${msg}</p><p><a href="/">Back to dashboard</a></p>`);
   };
   if (query.get('error')) return fail(query.get('error'));
+  const started = pending.get(query.get('state'));
+  pending.delete(query.get('state'));
+  if (!started) return fail('This sign-in was not started here, or took longer than 10 minutes. Try again.');
   const code = query.get('code');
   if (!code) return fail('No authorization code returned.');
 
@@ -291,6 +319,7 @@ async function oauthCallback(res, query) {
         client_secret: process.env.GOOGLE_CLIENT_SECRET,
         redirect_uri: REDIRECT_URI,
         grant_type: 'authorization_code',
+        code_verifier: started.verifier,
       }),
     });
     const d = await r.json();
@@ -315,7 +344,7 @@ async function oauthCallback(res, query) {
 }
 
 // ─── Router ───────────────────────────────────────────────────────
-http.createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p = url.pathname;
 
@@ -338,7 +367,7 @@ http.createServer(async (req, res) => {
   }
   if (p === '/api/accounts' && req.method === 'DELETE') {
     const email = url.searchParams.get('email');
-    if (email === moodle.ACCT) return json(res, 400, { error: 'the Moodle feed is configured in .env' });
+    if (email === moodle.ACCT) return json(res, 400, { error: 'the Moodle feed is set in Settings' });
     const tokens = loadTokens();
     delete tokens[email];
     saveTokens(tokens);
@@ -367,8 +396,7 @@ http.createServer(async (req, res) => {
     return json(res, 200, { on, aheadDays, dayHour, doneDeadlines });
   }
   if (p === '/api/reminders' && req.method === 'PUT') {
-    const origin = req.headers.origin;
-    if (origin && origin !== `http://localhost:${PORT}`) return json(res, 403, { error: 'bad origin' });
+    if (badOrigin(req)) return json(res, 403, { error: 'bad origin' });
     if (!(req.headers['content-type'] || '').includes('application/json')) {
       return json(res, 415, { error: 'expected application/json' });
     }
@@ -392,7 +420,7 @@ http.createServer(async (req, res) => {
       }
       saveReminders(r);
       if (turnedOn) {
-        await notifyMac('Reminders on', 'You will hear about tasks that are due, even with the dashboard closed.');
+        await platform.notify('Reminders on', 'You will hear about tasks that are due, even with the dashboard closed.');
         checkDueReminders();
       }
       return json(res, 200, { on: r.on, aheadDays: r.aheadDays, dayHour: r.dayHour, doneDeadlines: r.doneDeadlines });
@@ -403,8 +431,7 @@ http.createServer(async (req, res) => {
 
   // Rename an eLearn course (writes courses.json). Same fencing as /api/reveal: it writes a file.
   if (p === '/api/course-name' && req.method === 'POST') {
-    const origin = req.headers.origin;
-    if (origin && origin !== `http://localhost:${PORT}`) return json(res, 403, { error: 'bad origin' });
+    if (badOrigin(req)) return json(res, 403, { error: 'bad origin' });
     if (!(req.headers['content-type'] || '').includes('application/json')) {
       return json(res, 415, { error: 'expected application/json' });
     }
@@ -444,15 +471,14 @@ http.createServer(async (req, res) => {
     }
   }
 
-  // Reveal a local folder/file in Finder. Browsers refuse file:// links from an
+  // Reveal a local folder/file in Finder or Explorer. Browsers refuse file:// links from an
   // http:// page, so the click comes here instead.
   //
-  // This runs `open` on this Mac, so it is deliberately fenced in: JSON content
+  // This runs a program on this machine, so it is deliberately fenced in: JSON content
   // type (forces a CORS preflight, which blocks other websites from calling it),
   // same-origin check, path must already exist, and argv form so nothing hits a shell.
   if (p === '/api/reveal' && req.method === 'POST') {
-    const origin = req.headers.origin;
-    if (origin && origin !== `http://localhost:${PORT}`) return json(res, 403, { error: 'bad origin' });
+    if (badOrigin(req)) return json(res, 403, { error: 'bad origin' });
     if (!(req.headers['content-type'] || '').includes('application/json')) {
       return json(res, 415, { error: 'expected application/json' });
     }
@@ -465,9 +491,7 @@ http.createServer(async (req, res) => {
       if (!path.isAbsolute(target)) throw new Error('path must be absolute');
       const stat = fs.statSync(target);                       // throws if missing
       // Directory: open it. File: reveal it in its parent folder.
-      execFile('open', stat.isDirectory() ? [target] : ['-R', target], err => {
-        if (err) console.error('[reveal]', err.message);
-      });
+      platform.reveal(target, stat.isDirectory());
       return json(res, 200, { ok: true });
     } catch (err) {
       // Show the resolved path: mismatches are usually invisible in Finder
@@ -478,30 +502,55 @@ http.createServer(async (req, res) => {
     }
   }
 
-  // Native macOS folder picker (supports search, favourites, typing a path with ⌘⇧G).
+  // Native folder picker (Finder's on macOS, WinForms' on Windows; see platform.js).
   // The browser cannot expose a real filesystem path, so the dialog runs here.
   if (p === '/api/pick-folder' && req.method === 'POST') {
-    const origin = req.headers.origin;
-    if (origin && origin !== `http://localhost:${PORT}`) return json(res, 403, { error: 'bad origin' });
+    if (badOrigin(req)) return json(res, 403, { error: 'bad origin' });
     if (!(req.headers['content-type'] || '').includes('application/json')) {
       return json(res, 415, { error: 'expected application/json' });
     }
     for await (const _ of req) { /* drain */ }
-    return execFile('osascript', [
-      '-e', 'activate',
-      '-e', 'POSIX path of (choose folder with prompt "Choose a folder for this task")',
-    ], { timeout: 180000 }, (err, stdout, stderr) => {
-      if (err) {
-        // -128 is the user pressing Cancel, which is not an error worth reporting.
-        if (/-128/.test(stderr || '') || /-128/.test(err.message)) return json(res, 200, { cancelled: true });
-        console.error('[pick-folder]', (stderr || err.message).trim());
-        return json(res, 500, { error: 'could not open the folder picker' });
-      }
-      let picked = stdout.trim().replace(/\/+$/, '');           // drop trailing slash
+    try {
+      let picked = await platform.pickFolder();
+      if (picked === null) return json(res, 200, { cancelled: true });
       const home = os.homedir();
-      if (picked.startsWith(home + '/')) picked = '~' + picked.slice(home.length);   // shorter to read
-      json(res, 200, { path: picked });
-    });
+      if (picked.startsWith(home + path.sep)) picked = '~' + picked.slice(home.length);   // shorter to read
+      return json(res, 200, { path: picked });
+    } catch (err) {
+      console.error('[pick-folder]', err.message);
+      return json(res, 500, { error: 'could not open the folder picker' });
+    }
+  }
+
+  // What this OS can do, so the page hides buttons that would only fail.
+  if (p === '/api/platform' && req.method === 'GET') return json(res, 200, platform.capabilities);
+
+  // Per-install settings. The Moodle URL carries a login token, so it goes in but never comes back out.
+  if (p === '/api/config' && req.method === 'GET') {
+    return json(res, 200, { name: config.name || '', moodle: moodle.configured(), update: updater.status });
+  }
+  if (p === '/api/config' && req.method === 'PUT') {
+    if (badOrigin(req)) return json(res, 403, { error: 'bad origin' });
+    if (!(req.headers['content-type'] || '').includes('application/json')) {
+      return json(res, 415, { error: 'expected application/json' });
+    }
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const b = JSON.parse(body);
+      if (typeof b.name === 'string') config.name = b.name.trim().slice(0, 40);
+      if (typeof b.moodleUrl === 'string') {
+        const u = b.moodleUrl.trim();
+        if (u && !/^https:\/\/[^\s]+$/.test(u)) throw new Error('the Moodle URL must start with https://');
+        config.moodleUrl = u;
+        process.env.MOODLE_ICS_URL = u;
+        moodle._reset();
+      }
+      saveConfig(config);
+      return json(res, 200, { name: config.name || '', moodle: moodle.configured(), update: updater.status });
+    } catch (err) {
+      return json(res, 400, { error: err.message });
+    }
   }
 
   if (p === '/api/token' && req.method === 'GET') {
@@ -523,4 +572,12 @@ http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(buf);
   });
-}).listen(PORT, () => console.log(`Attention Dashboard → http://localhost:${PORT}`));
+});
+// Retry a busy port for a while: after an update the old server may still be shutting down.
+let tries = 0;
+server.on('error', err => {
+  if (err.code !== 'EADDRINUSE' || ++tries > 20) throw err;
+  setTimeout(() => server.listen(PORT), 1000);
+});
+server.listen(PORT, () => console.log(`Attention Dashboard v${updater.VERSION} → http://localhost:${PORT}`));
+updater.start(config, platform.restart);

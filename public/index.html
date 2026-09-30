@@ -52,7 +52,7 @@
       <div class="hero-blur"></div>
       <div class="hero-main">
         <p class="hero-eyebrow">Attention Dashboard</p>
-        <h1 id="greet-line">Hello, Chris.</h1>
+        <h1 id="greet-line">Hello.</h1>
         <p class="hero-date" id="date-line">–</p>
         <div class="hero-tiles">
           <div class="mac-panel hero-tile">
@@ -280,6 +280,20 @@
     </div>
 
     <div class="settings-row">
+      <label class="settings-label" for="settings-name">Your name
+        <span class="settings-hint">For the greeting.</span>
+      </label>
+      <input class="todo-input settings-text" id="settings-name" type="text" maxlength="40" onchange="saveProfile({ name: this.value })">
+    </div>
+
+    <div class="settings-row">
+      <label class="settings-label" for="settings-moodle">eLearn calendar
+        <span class="settings-hint">Moodle → Calendar → Export calendar → Get URL for subscription. Paste the whole URL; it stays on this computer.</span>
+      </label>
+      <input class="todo-input settings-text" id="settings-moodle" type="password" autocomplete="off" onchange="saveProfile({ moodleUrl: this.value })">
+    </div>
+
+    <div class="settings-row">
       <label class="settings-label" for="settings-remind">Remind me
         <span class="settings-hint">Days before a deadline to be notified. 0 means only once it is due.</span>
       </label>
@@ -419,6 +433,8 @@
         <button class="todo-btn todo-btn-primary" onclick="addDayReminder()">Add</button>
       </div>
     </div>
+
+    <p class="settings-hint settings-version" id="settings-version"></p>
 
     <div class="todo-btn-row">
       <button class="todo-btn todo-btn-cancel" onclick="resetSettings()">Reset to defaults</button>

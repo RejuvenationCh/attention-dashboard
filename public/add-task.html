@@ -40,7 +40,7 @@
 
       <label class="todo-form-label" for="link">Link or folder (optional)</label>
       <div class="input-row">
-        <input class="todo-input" id="link" type="text" placeholder="https://drive.google.com/… or a folder on this Mac">
+        <input class="todo-input" id="link" type="text" placeholder="https://drive.google.com/… or a folder on this computer">
         <button type="button" class="browse-btn" id="browse-btn"><span class="msym">folder_open</span> Browse</button>
       </div>
 
@@ -64,7 +64,7 @@
   // Served by the dashboard itself, so every call below is a same-origin one to the same
   // endpoints the dashboard's own modal uses — no CORS, no token handling beyond what the
   // dashboard already does, and nothing written back to campus.
-  const TZ = 'Asia/Makassar';
+  const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const title    = document.getElementById('title');
   const desc     = document.getElementById('desc');
@@ -104,7 +104,7 @@
   }
 
   // Mirrors createDeadlineEvent() in app.js — a second copy, because this page cannot
-  // call into that file. The event's shape (📌 prefix, 09:00 WITA, 24h popup reminder)
+  // call into that file. The event's shape (📌 prefix, 09:00 local time, 24h popup reminder)
   // has to stay in step with it, so change both together.
   // Same knobs as the dashboard's Settings, read from the store it saves them in.
   function deadlineSettings() {
@@ -128,8 +128,8 @@
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cred.token },
       body: JSON.stringify({
         summary: `📌 Deadline: ${title}`,
-        start: { dateTime: `${deadline}T${dl.time}:00+08:00`, timeZone: TZ },
-        end:   { dateTime: `${deadline}T${dl.end}:00+08:00`, timeZone: TZ },
+        start: { dateTime: `${deadline}T${dl.time}:00`, timeZone: TZ },
+        end:   { dateTime: `${deadline}T${dl.end}:00`, timeZone: TZ },
         reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: dl.warn }] },
       }),
     });
@@ -193,6 +193,8 @@
   document.getElementById('cancel').addEventListener('click', closeWindow);
   document.getElementById('close').addEventListener('click', closeWindow);
   document.getElementById('browse-btn').addEventListener('click', pickFolder);
+  fetch('api/platform').then(r => r.json())
+    .then(p => document.body.classList.toggle('no-picker', !p.canPickFolder)).catch(() => {});
   document.getElementById('overlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeWindow();   // click the sheet's backdrop
   });

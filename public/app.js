@@ -1,4 +1,8 @@
-const TZ = 'Asia/Makassar';
+// The machine's own zone: one dashboard per person, so where it runs is where they are.
+// A date-time string with no offset ("2026-09-15T12:00:00") parses as local time in this zone.
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const TZ_LABEL = { 'Asia/Jakarta': 'WIB', 'Asia/Pontianak': 'WIB', 'Asia/Makassar': 'WITA', 'Asia/Jayapura': 'WIT' }[TZ]
+  || new Intl.DateTimeFormat('en', { timeZoneName: 'short' }).formatToParts().find(p => p.type === 'timeZoneName').value;
 // OAuth now lives entirely on the server (see server.js); credentials are in .env.
 
 // ─── Google auth — multi-account, server-held refresh tokens ──────
@@ -256,14 +260,41 @@ function formatDur(ms) {
 function relDayLabel(ymd) {
   if (ymd === getDateKey(0)) return 'Today';
   if (ymd === getDateKey(1)) return 'Tomorrow';
-  return new Date(ymd + 'T12:00:00+08:00').toLocaleDateString('en-ID', { weekday:'short', day:'numeric', month:'short', timeZone: TZ });
+  return new Date(ymd + 'T12:00:00').toLocaleDateString('en-ID', { weekday:'short', day:'numeric', month:'short', timeZone: TZ });
 }
 
 // ─── Greeting + date header ───────────────────────────────────────
 function setGreeting() {
   const h = Number(new Date().toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: TZ }));
   const part = h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening';
-  document.getElementById('greet-line').textContent = `Good ${part}, Chris.`;
+  document.getElementById('greet-line').textContent = `Good ${part}${_profile.name ? ', ' + _profile.name : ''}.`;
+}
+
+// ─── Per-install profile and platform ─────────────────────────────
+// Both live on the server: the name and eLearn URL in config.json, what the OS can do in platform.js.
+let _profile = { name: '', moodle: false };
+let _platform = { canPickFolder: true, notifyHint: '' };
+async function loadProfile() {
+  [_profile, _platform] = await Promise.all([api('/api/config'), api('/api/platform')]).catch(() => [_profile, _platform]);
+  document.body.classList.toggle('no-picker', !_platform.canPickFolder);
+  setGreeting();
+}
+async function saveProfile(change) {
+  try {
+    _profile = await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
+  } catch (err) { showToast(`Could not save — ${err.message}`, null, 6); return; }
+  setGreeting();
+  paintProfile();
+  if ('moodleUrl' in change) restoreAccounts();   // the eLearn calendars appear or vanish
+}
+function paintProfile() {
+  document.getElementById('settings-name').value = _profile.name;
+  const m = document.getElementById('settings-moodle');
+  m.value = '';   // never sent back: it carries a login token
+  const u = _profile.update;
+  document.getElementById('settings-version').textContent = !u ? '' : `Version ${u.version}. ` + (
+    u.error ? u.error + '.' : !u.enabled ? 'Automatic updates are off.' : 'Updates install automatically.');
+  m.placeholder = _profile.moodle ? 'Connected (paste to replace)' : 'https://elearn.uc.ac.id/calendar/export_execute.php?…';
 }
 document.getElementById('date-line').textContent =
   new Date().toLocaleDateString('en-ID', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone: TZ });
@@ -283,10 +314,11 @@ let _calErrors = [];
 // each other — and so one failure isn't reported twice.
 async function fetchRange(startYmd, endYmd, errors = _calErrors, maxResults = 50) {
   const params = new URLSearchParams({
-    timeMin: startYmd + 'T00:00:00+08:00',
-    timeMax: endYmd + 'T23:59:59+08:00',
+    timeMin: new Date(startYmd + 'T00:00:00').toISOString(),
+    timeMax: new Date(endYmd + 'T23:59:59').toISOString(),
     singleEvents: 'true',   // expand recurring events, as the MCP tool did implicitly
     orderBy: 'startTime',
+    timeZone: TZ,           // returned dateTimes carry our offset, so their first 10 chars are the local date
     maxResults: String(maxResults),
   });
   errors.length = 0;
@@ -347,8 +379,8 @@ async function createDeadlineEvent(title, deadline, time = _settings.deadlineTim
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       summary: `📌 Deadline: ${title}`,
-      start: { dateTime: `${deadline}T${time}:00+08:00`, timeZone: TZ },
-      end:   { dateTime: `${deadline}T${plusHalfHour(time)}:00+08:00`, timeZone: TZ },
+      start: { dateTime: `${deadline}T${time}:00`, timeZone: TZ },
+      end:   { dateTime: `${deadline}T${plusHalfHour(time)}:00`, timeZone: TZ },
       reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: _settings.deadlineWarn }] },
     }),
   }, acct);
@@ -386,8 +418,8 @@ async function respondToEvent(e, status) {
 // ─── Free time blocks ─────────────────────────────────────────────
 function getFreeBlocks(events, ymd) {
   const now = Date.now();
-  const dayEnd = new Date(ymd + 'T22:00:00+08:00').getTime();
-  const dayStart = new Date(ymd + 'T06:00:00+08:00').getTime();
+  const dayEnd = new Date(ymd + 'T22:00:00').getTime();
+  const dayStart = new Date(ymd + 'T06:00:00').getTime();
   const cursor0 = Math.max(now, dayStart);
   if (cursor0 >= dayEnd) return [];
 
@@ -426,7 +458,7 @@ function startClock() {
     document.getElementById('clock-time').textContent =
       now.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit', timeZone: TZ });
     document.getElementById('clock-day').textContent =
-      now.toLocaleDateString('en-ID', { weekday:'long', timeZone: TZ }) + ' · WITA';
+      now.toLocaleDateString('en-ID', { weekday:'long', timeZone: TZ }) + ' · ' + TZ_LABEL;
   }
   tick();
   setInterval(tick, 1000);
@@ -436,8 +468,8 @@ function startClock() {
 function updateDayProgress() {
   const now = new Date();
   const ymd = now.toLocaleDateString('en-CA', { timeZone: TZ });
-  const dayStart = new Date(ymd + `T${String(_settings.dayStart).padStart(2, '0')}:00:00+08:00`).getTime();
-  const dayEnd   = new Date(ymd + `T${String(_settings.dayEnd).padStart(2, '0')}:00:00+08:00`).getTime();
+  const dayStart = new Date(ymd + `T${String(_settings.dayStart).padStart(2, '0')}:00:00`).getTime();
+  const dayEnd   = new Date(ymd + `T${String(_settings.dayEnd).padStart(2, '0')}:00:00`).getTime();
   const pct = Math.min(100, Math.max(0, (now.getTime() - dayStart) / (dayEnd - dayStart) * 100));
   document.getElementById('day-donut').style.strokeDashoffset = (283 * (1 - pct / 100)).toFixed(1);
   document.getElementById('day-pct').textContent = Math.round(pct);
@@ -447,7 +479,7 @@ function updateDayProgress() {
 function renderCountdown(events) {
   const now = Date.now();
   const next = events.find(e => {
-    const s = new Date(e.start?.dateTime || e.start?.date + 'T00:00:00+08:00').getTime();
+    const s = new Date(e.start?.dateTime || e.start?.date + 'T00:00:00').getTime();
     return s > now + 30 * 60000;
   });
   if (!next) {
@@ -456,7 +488,7 @@ function renderCountdown(events) {
     document.getElementById('cd-sub').textContent  = "you're all clear";
     return;
   }
-  const start = new Date(next.start?.dateTime || next.start?.date + 'T00:00:00+08:00');
+  const start = new Date(next.start?.dateTime || next.start?.date + 'T00:00:00');
   const diffMs = start.getTime() - now;
   const diffH  = diffMs / 3600000;
   const diffD  = Math.floor(diffH / 24);
@@ -792,7 +824,7 @@ function renderDayRows(ymd, dayEvents, isToday) {
 
   const freeBlocks = isToday ? getFreeBlocks(dayEvents, ymd) : [];
   const items = [
-    ...dayEvents.map(e => ({ type:'event', t: new Date(e.start?.dateTime||e.start?.date+'T00:00:00+08:00').getTime(), e })),
+    ...dayEvents.map(e => ({ type:'event', t: new Date(e.start?.dateTime||e.start?.date+'T00:00:00').getTime(), e })),
     ...freeBlocks.map(b => ({ type:'free', t: b.from, from: b.from, to: b.to })),
   ].sort((a, b) => a.t - b.t);
 
@@ -874,7 +906,7 @@ async function loadEvents() {
     const dayEv = byDate[ymd] || [];
     const count = dayEv.length;
     const hasRsvp = dayEv.some(e => e.attendees?.some(a => a.self && a.responseStatus === 'needsAction'));
-    const d = new Date(ymd + 'T12:00:00+08:00');
+    const d = new Date(ymd + 'T12:00:00');
     const dow = d.toLocaleDateString('en-ID', { weekday:'short', timeZone: TZ });
     const dm  = d.toLocaleDateString('en-ID', { day:'numeric', month:'short', timeZone: TZ });
     return `
@@ -1138,7 +1170,7 @@ function showDayDetail(ymd, dayEvents) {
   const panel = document.getElementById('month-day-detail');
   panel.style.display = '';
   document.getElementById('month-day-detail-title').textContent =
-    new Date(ymd + 'T12:00:00+08:00').toLocaleDateString('en-ID', { weekday:'long', day:'numeric', month:'long', timeZone: TZ });
+    new Date(ymd + 'T12:00:00').toLocaleDateString('en-ID', { weekday:'long', day:'numeric', month:'long', timeZone: TZ });
   const body = document.getElementById('month-day-detail-body');
   body.innerHTML = dayEvents.length
     ? `<div class="timeline"><div class="tl-events">${dayEvents.map(e => renderTlEvent(e, false)).join('')}</div></div>`
@@ -1187,11 +1219,12 @@ async function loadTodos() {
 function daysUntil(ymd) {
   if (!ymd) return null;
   const todayYmd = getDateKey(0);
-  return Math.round((new Date(ymd + 'T12:00:00+08:00') - new Date(todayYmd + 'T12:00:00+08:00')) / 86400000);
+  return Math.round((new Date(ymd + 'T12:00:00') - new Date(todayYmd + 'T12:00:00')) / 86400000);
 }
 
 // A local folder/file path rather than a URL, e.g. /Users/… or ~/Downloads
-function isLocalPath(v = '') { return /^(~|\/)/.test(v.trim()); }
+// ~, / (macOS), C:\ or C:/ (Windows), \\server\share (UNC).
+function isLocalPath(v = '') { return /^(~|\/|[A-Za-z]:[\\/]|\\\\)/.test(v.trim()); }
 
 // Trailing spaces are legal in macOS filenames and Finder hides them, so a blanket
 // .trim() silently breaks paths like "…/Day 5 ". Only URLs get trimmed both ends.
@@ -1213,8 +1246,8 @@ function addLinkRow(link = {}, focus = false) {
   row.className = 'input-row link-row';
   row.innerHTML = `
     <input class="todo-input todo-link-name" type="text" placeholder="Name (optional)">
-    <input class="todo-input todo-link-input" type="text" placeholder="https://drive.google.com/… or a folder on this Mac">
-    <button type="button" class="browse-btn" onclick="pickFolder(this)" title="Choose a folder on this Mac"><span class="msym">folder_open</span> Browse</button>
+    <input class="todo-input todo-link-input" type="text" placeholder="https://drive.google.com/… or a folder on this computer">
+    <button type="button" class="browse-btn" onclick="pickFolder(this)" title="Choose a folder on this computer"><span class="msym">folder_open</span> Browse</button>
     <button type="button" class="icon-btn link-remove" onclick="removeLinkRow(this)" title="Remove this link"><span class="msym">close</span></button>`;
   row.querySelector('.todo-link-name').value = link.title || '';
   row.querySelector('.todo-link-input').value = link.url || '';
@@ -1290,7 +1323,7 @@ async function revealTodoPath(id, i = 0) {
 function dueChip(ymd) {
   if (!ymd) return '';
   const days = daysUntil(ymd);
-  const label = new Date(ymd + 'T12:00:00+08:00').toLocaleDateString('en-ID', { day:'numeric', month:'short', timeZone: TZ });
+  const label = new Date(ymd + 'T12:00:00').toLocaleDateString('en-ID', { day:'numeric', month:'short', timeZone: TZ });
   const cls  = days < 0 ? 'overdue' : days <= 3 ? 'soon' : '';
   const icon = days < 0 ? 'warning' : 'event';
   const hint = days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : `${days}d left`;
@@ -1332,6 +1365,7 @@ const hourLabel = h => `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`;
 
 function openSettings() {
   paintSettings();
+  paintProfile();
   renderDayReminderSettings();
   document.getElementById('settings-overlay').classList.add('open');
 }
@@ -1556,7 +1590,7 @@ function renderTodos() {
   const linkLabel = ({ title, url: l }, many) => {
     if (title) return title;
     if (!many) return isLocalPath(l) ? 'Open folder' : 'Open link';
-    if (isLocalPath(l)) return l.replace(/\/+$/, '').split('/').pop() || l;
+    if (isLocalPath(l)) return l.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || l;
     try { return new URL(l).hostname.replace(/^www\./, ''); } catch { return l; }
   };
   const linkHtml = t => {
@@ -2276,7 +2310,7 @@ async function toggleReminders() {
   } catch (err) { showToast(`Could not change reminders — ${err.message}`, null, 6); return; }
   paintReminderBtn();
   showToast(_remindersOn
-    ? 'Reminders on, even with the dashboard closed. No banner? Allow "Script Editor" in System Settings → Notifications.'
+    ? `Reminders on, even with the dashboard closed. ${_platform.notifyHint}`
     : 'Reminders muted', null, _remindersOn ? 10 : 4);
 }
 
@@ -2293,7 +2327,7 @@ const saveNotifs = () => localStorage.setItem(NOTIF_KEY, JSON.stringify(_notifs)
 // Absolute rather than "Tomorrow": the notification outlives the day it was written.
 function whenLabel(t) {
   const allDay = t.length <= 10;
-  return new Date(allDay ? t + 'T12:00:00+08:00' : t)
+  return new Date(allDay ? t + 'T12:00:00' : t)
     .toLocaleDateString('en-ID', { weekday:'short', day:'numeric', month:'short', timeZone: TZ })
     + (allDay ? '' : ' ' + formatTime(t));
 }
@@ -2413,8 +2447,7 @@ const saveDayReminders = () => {
   putReminders({ days: _dayReminders }).catch(() => {});   // the server sends them in the morning
 };
 
-// Noon at +08:00 is 04:00 UTC the same date, so getUTCDay is the weekday in TZ.
-const weekdayOf = ymd => new Date(ymd + 'T12:00:00+08:00').getUTCDay();
+const weekdayOf = ymd => new Date(ymd + 'T12:00:00').getDay();
 const remindersFor = ymd => _dayReminders.filter(r => r.day === ymd || r.day === String(weekdayOf(ymd)));
 const reminderDayLabel = day => day.length === 1 ? `Every ${WEEKDAYS[day]}` : whenLabel(day);
 
@@ -2464,6 +2497,7 @@ function removeDayReminder(id) {
 
 // ─── Init ─────────────────────────────────────────────────────────
 setGreeting();
+loadProfile();
 startClock();
 updateDayProgress();
 setInterval(() => { updateDayProgress(); tickNowLines(); }, 60000);
