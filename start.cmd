@@ -1,23 +1,58 @@
 @echo off
-rem Double-click to start the dashboard after "Stop dashboard" in Settings (Windows).
-rem Not installed yet? Runs the installer instead.
+rem Double-click to start the dashboard (after "Stop dashboard", or if it did not start at logon).
+rem Says what it is doing. If the background task cannot bring the server up, it runs the
+rem server in this window instead, so the dashboard works and any error is shown here.
 cd /d "%~dp0"
-schtasks /query /tn "Attention Dashboard" >nul 2>&1 || (powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 & exit /b)
+title Attention Dashboard
+echo Starting Attention Dashboard...
+
+where node >nul 2>&1 || (
+  echo Node.js is not installed. Install it with:  winget install OpenJS.NodeJS.LTS
+  pause
+  exit /b 1
+)
+if not exist config.json (
+  echo Not installed yet. Running the installer...
+  call "%~dp0install.cmd"
+  exit /b
+)
 
 set PORT=3100
 for /f %%p in ('node -p "require('./config.json').port"') do set PORT=%%p
 set URL=http://localhost:%PORT%
 
-rem Already running (never stopped, or an update restarted it): just open it.
-curl -s -o nul "%URL%/api/platform" || schtasks /run /tn "Attention Dashboard" >nul
+curl -s -o nul "%URL%/api/platform" && goto open
 
+echo Asking Windows to start it in the background...
+schtasks /run /tn "Attention Dashboard" >nul 2>&1 || echo   (the background task is missing; double-click install.cmd to set it up)
 set N=0
 :wait
 curl -s -o nul "%URL%/api/platform" && goto open
 set /a N+=1
-if %N% geq 20 goto open
+if %N% geq 15 goto foreground
+<nul set /p =.
 timeout /t 1 /nobreak >nul
 goto wait
 
 :open
+echo.
+echo Running at %URL%
 start "" "%URL%"
+exit /b 0
+
+:foreground
+echo.
+echo The background task did not start it.
+if exist dashboard.log (
+  echo Last lines of dashboard.log:
+  powershell -NoProfile -Command "Get-Content dashboard.log -Tail 15"
+)
+echo.
+echo Starting it in this window instead. Keep this window open while you use the dashboard.
+echo If an error appears below, copy it and send it to whoever is helping you.
+echo.
+start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 3; Start-Process '%URL%'"
+node server.js
+echo.
+echo The dashboard stopped.
+pause

@@ -21,11 +21,11 @@ $port = & $node install-port.js
 if ($LASTEXITCODE -ne 0) { exit 1 }
 $port = "$port".Trim()
 
-# conhost --headless runs the console app with no window at all, not even a flash at logon.
-# cmd /c is only there to append the output to dashboard.log.
+# conhost --headless runs node with no window at all, not even a flash at logon. The server
+# writes dashboard.log itself on Windows, so no cmd redirection (and its quoting) is needed.
 $task    = 'Attention Dashboard'
 $action  = New-ScheduledTaskAction -Execute 'conhost.exe' -WorkingDirectory $PSScriptRoot `
-             -Argument "--headless cmd.exe /c `"`"$node`" server.js >> dashboard.log 2>&1`""
+             -Argument "--headless `"$node`" server.js"
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
              -ExecutionTimeLimit ([TimeSpan]::Zero)

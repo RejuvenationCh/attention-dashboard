@@ -13,6 +13,16 @@ const updater = require('./updater');              // follows new release tags
 
 try { process.loadEnvFile(); } catch { /* no .env yet */ }
 
+// Windows starts the server from a scheduled task with no console to write to, so it keeps its
+// own log: everything it prints, and the error if it crashes. (macOS's LaunchAgent redirects
+// output to dashboard.log itself; run from a terminal, output stays on screen.)
+if (process.platform === 'win32' && !process.stdout.isTTY) {
+  const LOG = path.join(__dirname, 'dashboard.log');
+  const write = (...a) => { try { fs.appendFileSync(LOG, `${new Date().toISOString()} ${require('util').format(...a)}\n`); } catch {} };
+  console.log = console.error = write;
+  process.on('uncaughtException', err => { write('crashed:', err.stack || err); process.exit(1); });
+}
+
 // Per-install settings, written by the installer and the settings panel. Gitignored.
 // .env still works and wins for the Google client, so an existing setup keeps running.
 const CONFIG_FILE = path.join(__dirname, 'config.json');

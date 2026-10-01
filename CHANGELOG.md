@@ -3,6 +3,14 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.9.1 (1 October 2026)
+
+- Windows: double-click **install.cmd** to install (a .ps1 file opens in Notepad when
+  double-clicked). **start.cmd** now says what it is doing, and if the background start fails it
+  runs the dashboard in its own window and shows the error.
+- Windows: the background start is simpler, and the dashboard keeps its own `dashboard.log`, so
+  a failed start leaves a message.
+
 ## 1.9.0 (1 October 2026)
 
 - **Bahasa Indonesia.** The whole dashboard, dates included, in Indonesian. It follows your
