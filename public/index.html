@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#f0f2f5">
 <link href="https://fonts.googleapis.com" rel="preconnect">
 <link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,0&icon_names=account_circle,add,add_task,calendar_add_on,check,check_circle,chevron_left,chevron_right,close,edit,event,event_available,event_busy,event_list,event_note,expand_less,expand_more,flag,folder_open,link,mail,notifications,notifications_active,notifications_none,outlined_flag,push_pin,radio_button_unchecked,refresh,repeat,schedule,school,search,settings,star,star_border,task,task_alt,undo,vertical_align_top,videocam,warning&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,0&icon_names=account_circle,add,add_task,backup,calendar_add_on,check,check_circle,chevron_left,chevron_right,close,edit,event,event_available,event_busy,event_list,event_note,expand_less,expand_more,flag,folder_open,link,mail,notifications,notifications_active,notifications_none,outlined_flag,palette,push_pin,radio_button_unchecked,refresh,repeat,schedule,school,search,settings,star,star_border,task,task_alt,undo,vertical_align_top,videocam,warning&display=swap" rel="stylesheet">
 <script src="appearance.js"></script>
 <script src="i18n.js"></script>
 <link rel="stylesheet" href="style.css">
@@ -78,7 +78,7 @@
           </div>
         </div>
       </div>
-      <div class="donut-wrap" id="donut-wrap" title="Day progress, 7 AM to 10 PM">
+      <div class="donut-wrap" id="donut-wrap" title="Day progress, 7 AM to 10 PM" onclick="openSettingsAt('settings-day-start')">
         <svg viewBox="0 0 100 100">
           <circle class="donut-track" cx="50" cy="50" r="45" fill="transparent" stroke-width="6"/>
           <circle class="donut-fill" id="day-donut" cx="50" cy="50" r="45" fill="transparent" stroke-width="6" stroke-dashoffset="283"/>
@@ -86,6 +86,7 @@
         <div class="donut-center">
           <span class="donut-pct"><span id="day-pct">–</span><small>%</small></span>
           <span class="donut-cap">of day</span>
+          <span class="donut-range" id="donut-range"></span>
         </div>
       </div>
     </section>
@@ -323,14 +324,24 @@
 </div>
 
 <!-- Settings: every knob the dashboard exposes, applied as you change it -->
-<div class="todo-overlay" id="settings-overlay" onclick="if(event.target===this) closeSettings()">
-  <div class="todo-modal settings-modal">
-    <div class="todo-modal-head">
+<div class="todo-overlay settings-overlay" id="settings-overlay" onclick="if(event.target===this) closeSettings()">
+  <div class="todo-modal settings-modal" role="dialog" aria-label="Settings">
+    <div class="settings-head">
       <span class="todo-modal-heading">Settings</span>
-      <button class="icon-btn" onclick="closeSettings()"><span class="msym">close</span></button>
+      <button class="icon-btn" onclick="closeSettings()" title="Close"><span class="msym">close</span></button>
     </div>
-
-    <h3 class="settings-section">You</h3>
+    <div class="settings-body">
+    <nav class="settings-nav" id="settings-nav">
+      <button data-pane="you" onclick="showSettingsPane('you')"><span class="msym">account_circle</span><span>You</span></button>
+      <button data-pane="tasks" onclick="showSettingsPane('tasks')"><span class="msym">task_alt</span><span>Tasks</span></button>
+      <button data-pane="calendar" onclick="showSettingsPane('calendar')"><span class="msym">event_note</span><span>Calendar</span></button>
+      <button data-pane="appearance" onclick="showSettingsPane('appearance')"><span class="msym">palette</span><span>Appearance</span></button>
+      <button data-pane="data" onclick="showSettingsPane('data')"><span class="msym">backup</span><span>Your data</span></button>
+      <button data-pane="app" onclick="showSettingsPane('app')"><span class="msym">settings</span><span>App</span></button>
+    </nav>
+    <div class="settings-panes" id="settings-panes">
+      <section class="settings-pane" id="pane-you">
+        <h3 class="settings-section">You</h3>
 
     <div class="settings-row">
       <label class="settings-label" for="settings-name">Your name
@@ -345,8 +356,9 @@
       </label>
       <input class="todo-input settings-text" id="settings-moodle" type="password" autocomplete="off" onchange="saveProfile({ moodleUrl: this.value })">
     </div>
-
-    <h3 class="settings-section">Tasks</h3>
+      </section>
+      <section class="settings-pane" id="pane-tasks">
+        <h3 class="settings-section">Tasks</h3>
 
     <div class="settings-row">
       <label class="settings-label" for="settings-remind">Remind me
@@ -467,8 +479,9 @@
       </label>
       <input class="settings-check" id="settings-dldetails" type="checkbox" onchange="settingsChanged()">
     </div>
-
-    <h3 class="settings-section">Calendar</h3>
+      </section>
+      <section class="settings-pane" id="pane-calendar">
+        <h3 class="settings-section">Calendar</h3>
 
     <div class="settings-row">
       <label class="settings-label" for="settings-week">Week starts on
@@ -481,8 +494,8 @@
     </div>
 
     <div class="settings-row">
-      <label class="settings-label" for="settings-day-start">Day window
-        <span class="settings-hint">What the progress ring measures, between these hours.</span>
+      <label class="settings-label" for="settings-day-start">Day progress hours
+        <span class="settings-hint">The ring next to the greeting fills up between these hours. Set them to your own day, e.g. 8 to 23.</span>
       </label>
       <div class="settings-pair">
         <input class="todo-input settings-num" id="settings-day-start" type="number" min="0" max="23" onchange="settingsChanged()">
@@ -534,8 +547,9 @@
         <button class="todo-btn todo-btn-primary" onclick="addDayReminder()">Add</button>
       </div>
     </div>
-
-    <h3 class="settings-section">Appearance</h3>
+      </section>
+      <section class="settings-pane" id="pane-appearance">
+        <h3 class="settings-section">Appearance</h3>
 
     <div class="settings-row">
       <label class="settings-label" for="settings-theme">Theme
@@ -558,7 +572,19 @@
         <option value="purple">Purple</option>
         <option value="rose">Rose</option>
         <option value="amber">Amber</option>
+        <option value="custom">Custom…</option>
       </select>
+    </div>
+
+    <div class="settings-row" id="settings-custom-row" hidden>
+      <label class="settings-label" for="settings-custom-hex">Custom colour
+        <span class="settings-hint">Pick one, or type a hex code like #e11d48.</span>
+      </label>
+      <div class="settings-pair">
+        <input type="color" id="settings-custom-color" class="color-swatch" oninput="customAccentChanged(this.value)">
+        <input class="todo-input settings-text" id="settings-custom-hex" type="text" maxlength="7" spellcheck="false"
+               placeholder="#3b82f6" oninput="customAccentChanged(this.value, true)">
+      </div>
     </div>
 
     <div class="settings-row">
@@ -621,8 +647,9 @@
       </label>
       <input class="settings-check" id="settings-reduce" type="checkbox" onchange="appearanceChanged()">
     </div>
-
-    <h3 class="settings-section">Your data</h3>
+      </section>
+      <section class="settings-pane" id="pane-data">
+        <h3 class="settings-section">Your data</h3>
 
     <div class="settings-row">
       <label class="settings-label">Backup
@@ -635,8 +662,9 @@
         <input type="file" id="restore-file" accept="application/json,.json" hidden onchange="restoreBackup(this.files[0]); this.value = ''">
       </div>
     </div>
-
-    <h3 class="settings-section">App</h3>
+      </section>
+      <section class="settings-pane" id="pane-app">
+        <h3 class="settings-section">App</h3>
 
     <div class="settings-row">
       <label class="settings-label" for="settings-autoupdate">Automatic updates
@@ -654,9 +682,11 @@
       <button class="text-btn" onclick="copyDiagnostics()">Copy diagnostics</button>
       <button class="text-btn" onclick="closeSettings(); document.getElementById('keys-overlay').classList.add('open')">Keyboard shortcuts</button>
     </div>
-
-    <div class="todo-btn-row">
-      <button class="todo-btn todo-btn-cancel" onclick="resetSettings()">Reset to defaults</button>
+      </section>
+    </div>
+    </div>
+    <div class="settings-foot">
+      <button class="text-btn settings-reset" onclick="resetSettings()">Reset to defaults</button>
       <button class="todo-btn todo-btn-primary" onclick="closeSettings()">Done</button>
     </div>
   </div>

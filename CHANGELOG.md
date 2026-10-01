@@ -3,6 +3,17 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.11.0 (1 October 2026)
+
+- **A new Settings window.** Sections on the left (You, Tasks, Calendar, Appearance, Your data,
+  App) and one section at a time on the right, with switches for on/off settings and the
+  controls lined up. On a narrow screen the sections become tabs.
+- **Your own accent colour.** Settings → Appearance → Accent colour → Custom: pick a colour or
+  type a hex code like `#e11d48`. Light colours get dark text on their buttons so they stay
+  readable.
+- **Day progress hours on show.** The ring now shows which hours it measures (07:00–22:00), and
+  clicking it opens the setting to change them.
+
 ## 1.10.0 (1 October 2026)
 
 - **Its own app on Windows.** The installer adds **Attention Dashboard** to the Start menu and

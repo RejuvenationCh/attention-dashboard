@@ -165,7 +165,8 @@ purpose, so connect Google and paste the eLearn link again.
 
 - **Language**: English or Bahasa Indonesia (automatic follows your browser). Quick add
   understands both, e.g. `laporan besok jam 5 sore #kuliah`.
-- a light and dark theme (or follow your computer) and an accent colour
+- a light and dark theme (or follow your computer) and an accent colour, or your own as a hex
+  code
 - **Show**: which cards appear on the dashboard (Tasks and Accounts always do)
 - a 12-hour or 24-hour **Clock**, a **Text size**, and **Compact spacing**
 - **Reduce effects**, which turns off the glass blur and animations on slower computers

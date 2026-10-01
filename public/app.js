@@ -391,8 +391,9 @@ function dismissWelcome() {
   renderWelcome();
 }
 function openSettingsAt(id) {
-  openSettings();
   const el = document.getElementById(id);
+  _settingsPane = el.closest('.settings-pane').id.replace('pane-', '');
+  openSettings();
   el.scrollIntoView({ block: 'center' });
   el.focus();
 }
@@ -401,6 +402,9 @@ function paintAppearance() {
   const a = window.appearance.read();
   document.getElementById('settings-theme').value = a.theme;
   document.getElementById('settings-accent').value = a.accent;
+  document.getElementById('settings-custom-row').hidden = a.accent !== 'custom';
+  document.getElementById('settings-custom-color').value = a.customAccent;
+  document.getElementById('settings-custom-hex').value = a.customAccent;
   document.getElementById('settings-reduce').checked = !!a.reduce;
   document.getElementById('settings-size').value = String(a.size);
   document.getElementById('settings-compact').checked = !!a.compact;
@@ -408,11 +412,22 @@ function paintAppearance() {
   document.getElementById('settings-lang').value = a.lang || 'auto';
   document.querySelectorAll('[data-card]').forEach(c => { c.checked = !(a.hide || []).includes(c.dataset.card); });
 }
+// Custom accent: the picker and the hex box stay in step; a half-typed hex is left alone
+// until it is a whole colour, so typing "#e1" does not flash the page.
+function customAccentChanged(value, typed) {
+  const rgb = window.appearance.parseHex(value);
+  if (!rgb) return;
+  const hex = window.appearance.toHex(rgb);
+  if (typed) document.getElementById('settings-custom-color').value = hex;
+  else document.getElementById('settings-custom-hex').value = hex;
+  window.appearance.save({ ...window.appearance.read(), accent: 'custom', customAccent: hex });
+}
 function appearanceChanged() {
   const clockWas = window.appearance.read().clock, langWas = window.appearance.read().lang;
   window.appearance.save({
     theme: document.getElementById('settings-theme').value,
     accent: document.getElementById('settings-accent').value,
+    customAccent: window.appearance.read().customAccent,
     reduce: document.getElementById('settings-reduce').checked,
     size: document.getElementById('settings-size').value,
     compact: document.getElementById('settings-compact').checked,
@@ -420,6 +435,7 @@ function appearanceChanged() {
     hide: [...document.querySelectorAll('[data-card]')].filter(c => !c.checked).map(c => c.dataset.card),
     lang: document.getElementById('settings-lang').value,
   });
+  document.getElementById('settings-custom-row').hidden = window.appearance.read().accent !== 'custom';
   // The whole page is drawn in one language, so a switch reloads it.
   if (window.appearance.read().lang !== langWas) { location.reload(); return; }
   // Times are written into the cards as they render, so a new clock format needs a redraw.
@@ -434,7 +450,7 @@ function paintUpdate() {
   const rb = u.rolledBack;
   document.getElementById('settings-version').textContent = `Version ${u.version}. ` + (
     rb && !u.available ? `Version ${rb.failed} did not start, so the dashboard went back to ${rb.restored}. It will wait for the next version.`
-    : u.error ? u.error + '.'
+    : u.error ? u.error[0].toUpperCase() + u.error.slice(1) + '.'
     : u.available ? `Version ${u.latest} is available.`
     : u.checkedAt ? 'Up to date.' : '');
   const install = document.getElementById('install-btn');
@@ -1712,9 +1728,19 @@ const saveSettings = () => {
 
 // "Tomorrow" beats "1 day", and 7 is the one everybody means by next week.
 const snoozeLabel = d => d === 1 ? 'Tomorrow' : d === 7 ? 'Next week' : `${d} day${d > 1 ? 's' : ''}`;
-const hourLabel = h => window.appearance.read().clock === '12' ? `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}` : `${String(h).padStart(2, '0')}:00`;
+// 24 is midnight at the end of the day: "12 AM", not "12 PM".
+const hourLabel = h => window.appearance.read().clock === '12' ? `${h % 12 || 12} ${h < 12 || h === 24 ? 'AM' : 'PM'}` : `${String(h).padStart(2, '0')}:00`;
 
+// Settings shows one section at a time; it reopens on the last one used.
+let _settingsPane = 'you';
+function showSettingsPane(id) {
+  _settingsPane = id;
+  document.querySelectorAll('.settings-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + id));
+  document.querySelectorAll('#settings-nav button').forEach(b => b.classList.toggle('active', b.dataset.pane === id));
+  document.getElementById('settings-panes').scrollTop = 0;
+}
 function openSettings() {
+  showSettingsPane(_settingsPane);
   paintSettings();
   paintProfile();
   paintAppearance();
@@ -1756,7 +1782,9 @@ function paintSettings() {
   document.getElementById('settings-nowline').value = Math.round(_settings.nowLineAlpha * 100);
   document.getElementById('settings-nowline-val').textContent = `${Math.round(_settings.nowLineAlpha * 100)}%`;
   document.getElementById('donut-wrap').setAttribute('title',
-    `Day progress, ${hourLabel(_settings.dayStart)} to ${hourLabel(_settings.dayEnd)}`);
+    `Day progress, ${hourLabel(_settings.dayStart)} to ${hourLabel(_settings.dayEnd)}. Click to change the hours.`);
+  // The hours under the percentage, so "62%" is never a mystery about which day it means.
+  document.getElementById('donut-range').textContent = `${hourLabel(_settings.dayStart)}–${hourLabel(_settings.dayEnd)}`;
 }
 
 // Read every control back, validate, persist. A field that will not parse keeps its previous
