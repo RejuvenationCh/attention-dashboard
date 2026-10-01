@@ -36,20 +36,23 @@ The dashboard opens in your browser. For its own window and Dock icon: in Safari
 
 ### Windows
 
-1. Open **PowerShell** and install the tools:
+1. Open **PowerShell** (Start menu, type "PowerShell") and install the tools:
 
    ```powershell
    winget install OpenJS.NodeJS.LTS
    winget install Git.Git
    ```
 
-2. Close PowerShell, open a **new** PowerShell window, and run:
+2. Close PowerShell, open a **new** PowerShell window, and download the dashboard:
 
    ```powershell
    git clone https://github.com/RejuvenationCh/attention-dashboard.git
-   cd attention-dashboard
-   powershell -ExecutionPolicy Bypass -File install.ps1
    ```
+
+   Use `git clone`, not GitHub's "Download ZIP": a ZIP copy cannot update itself.
+
+3. Open the new `attention-dashboard` folder (in your user folder) and **double-click
+   `install.cmd`**. A window shows what it is doing and stays open at the end.
 
 The dashboard opens in your browser. For its own window: in Edge, open the **⋯** menu →
 **Apps → Install this site as an app**.
