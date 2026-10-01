@@ -20,14 +20,16 @@ if not exist config.json (
 set PORT=3100
 for /f %%p in ('node -p "require('./config.json').port"') do set PORT=%%p
 set URL=http://localhost:%PORT%
+rem Checks use 127.0.0.1: Windows tries localhost as ::1 first and waits ~2 s on a refusal.
+set CHECK=http://127.0.0.1:%PORT%/api/platform
 
-curl -s -o nul "%URL%/api/platform" && goto open
+curl -s -o nul "%CHECK%" && goto open
 
 echo Asking Windows to start it in the background...
 schtasks /run /tn "Attention Dashboard" >nul 2>&1 || echo   (the background task is missing; double-click install.cmd to set it up)
 set N=0
 :wait
-curl -s -o nul "%URL%/api/platform" && goto open
+curl -s -o nul "%CHECK%" && goto open
 set /a N+=1
 if %N% geq 15 goto foreground
 <nul set /p =.

@@ -3,6 +3,15 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.9.2 (1 October 2026)
+
+- Windows: the installer could report "the server did not start" while it was running fine.
+  The dashboard now answers on both of the computer's own addresses, so `localhost` connects
+  straight away instead of after a two-second detour.
+- Windows: `dashboard.log` is always written, including when the dashboard starts in the
+  background at logon.
+- The installers show numbered steps and say clearly when they are done.
+
 ## 1.9.1 (1 October 2026)
 
 - Windows: double-click **install.cmd** to install (a .ps1 file opens in Notepad when

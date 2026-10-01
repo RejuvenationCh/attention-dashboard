@@ -84,6 +84,14 @@ const freePort = () => new Promise(ok => {
     assert.strictEqual(daily.length, 1);
     assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'backups', daily[0]), 'utf8')).app, 'attention-dashboard');
 
+    // Reachable on ::1 too ("localhost" is tried as ::1 first, slowly on Windows), when the
+    // machine has IPv6 at all; the Host check still applies there.
+    const via6 = await new Promise(ok => {
+      const s = net.connect({ host: '::1', port }, () => s.end(`GET /api/platform HTTP/1.1\r\nHost: localhost:${port}\r\nConnection: close\r\n\r\n`));
+      let out = ''; s.on('data', d => { out += d; }); s.on('end', () => ok(out)); s.on('error', () => ok(null));
+    });
+    if (via6 !== null) assert.ok(via6.startsWith('HTTP/1.1 200'), 'answers on ::1');
+
     // Settings round trip.
     assert.strictEqual((await send('PUT', '/api/config', { name: 'Smoke' })).body.name, 'Smoke');
 

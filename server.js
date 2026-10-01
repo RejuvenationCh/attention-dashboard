@@ -13,14 +13,19 @@ const updater = require('./updater');              // follows new release tags
 
 try { process.loadEnvFile(); } catch { /* no .env yet */ }
 
-// Windows starts the server from a scheduled task with no console to write to, so it keeps its
-// own log: everything it prints, and the error if it crashes. (macOS's LaunchAgent redirects
-// output to dashboard.log itself; run from a terminal, output stays on screen.)
-if (process.platform === 'win32' && !process.stdout.isTTY) {
+// On Windows the server always keeps its own dashboard.log: everything it prints, and the error
+// if it crashes. The scheduled task runs it under a hidden console, which still counts as a
+// terminal, so "only when there is no terminal" missed exactly that case. Output also still goes
+// to the console, for start.cmd's window. (macOS's LaunchAgent writes dashboard.log itself.)
+if (process.platform === 'win32') {
   const LOG = path.join(__dirname, 'dashboard.log');
-  const write = (...a) => { try { fs.appendFileSync(LOG, `${new Date().toISOString()} ${require('util').format(...a)}\n`); } catch {} };
-  console.log = console.error = write;
-  process.on('uncaughtException', err => { write('crashed:', err.stack || err); process.exit(1); });
+  const tee = orig => (...a) => {
+    try { fs.appendFileSync(LOG, `${new Date().toISOString()} ${require('util').format(...a)}\n`); } catch {}
+    orig(...a);
+  };
+  console.log = tee(console.log);
+  console.error = tee(console.error);
+  process.on('uncaughtException', err => { console.error('crashed:', err.stack || err); process.exit(1); });
 }
 
 // Per-install settings, written by the installer and the settings panel. Gitignored.
@@ -724,15 +729,22 @@ const server = http.createServer(async (req, res) => {
     res.end(buf);
   });
 });
-// Retry a busy port for a while: after an update the old server may still be shutting down.
-let tries = 0;
-server.on('error', err => {
-  if (err.code !== 'EADDRINUSE' || ++tries > 20) throw err;
-  setTimeout(() => server.listen(PORT, '127.0.0.1'), 1000);
-});
 // Loopback only: this server hands out Google access tokens, so it must never be reachable
-// from the network (campus Wi-Fi). Browsers fall back from ::1 to 127.0.0.1 for "localhost".
-server.listen(PORT, '127.0.0.1', () => console.log(`Attention Dashboard v${updater.VERSION} → http://localhost:${PORT}`));
+// from the network (campus Wi-Fi). Both loopback addresses, because "localhost" is tried as
+// ::1 first, and on Windows a refused ::1 connection takes ~2 s before falling back to
+// 127.0.0.1 (long enough for the installer's check to give up on a server that was running).
+// Each retries a busy port for a while: after an update the old server may still be closing.
+function listenOn(srv, host, required, done) {
+  let tries = 0;
+  srv.on('error', err => {
+    if (err.code === 'EADDRINUSE' && ++tries <= 20) return setTimeout(() => srv.listen(PORT, host), 1000);
+    if (required) throw err;
+    console.error(`[listen] ${host} unavailable: ${err.code}`);   // no IPv6: 127.0.0.1 still serves
+  });
+  srv.listen(PORT, host, done);
+}
+listenOn(server, '127.0.0.1', true, () => console.log(`Attention Dashboard v${updater.VERSION} → http://localhost:${PORT}`));
+listenOn(http.createServer(server.listeners('request')[0]), '::1', false);
 updater.start(config, platform.restart, PORT, () => saveConfig(config));
 
 // What's new, once per update: the CHANGELOG entries since the version that ran last. Installs

@@ -55,7 +55,8 @@ Start-ScheduledTask -TaskName $task
 $url = "http://localhost:$port"
 $up = $false
 foreach ($i in 1..30) {
-  try { Invoke-WebRequest "$url/api/platform" -UseBasicParsing -TimeoutSec 2 | Out-Null; $up = $true; break }
+  # 127.0.0.1, not localhost: Windows tries localhost as ::1 first and waits ~2 s on a refusal.
+  try { Invoke-WebRequest "http://127.0.0.1:$port/api/platform" -UseBasicParsing -TimeoutSec 2 | Out-Null; $up = $true; break }
   catch { Write-Host -NoNewline '.'; Start-Sleep -Milliseconds 500 }
 }
 if (-not $up) {
