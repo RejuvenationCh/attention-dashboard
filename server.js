@@ -58,7 +58,8 @@ const SCOPES = 'openid email https://www.googleapis.com/auth/calendar';
 // localhost and 127.0.0.1 are the same server; either may be in the address bar.
 const ORIGINS = new Set([`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`]);
 const badOrigin = req => req.headers.origin && !ORIGINS.has(req.headers.origin);
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png',
+               '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
 
 // Task store (SQLite)
 // `seq` preserves list order; `id` is the stable key the frontend uses.

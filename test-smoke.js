@@ -43,6 +43,11 @@ const freePort = () => new Promise(ok => {
     for (const f of ['/app.js', '/style.css', '/appearance.js', '/add-task.html']) {
       assert.strictEqual((await get(f)).status, 200, f + ' is served');
     }
+    // Installable as its own app: the manifest, and the icons it and the pages point at.
+    const manifest = await fetch(base + '/manifest.webmanifest');
+    assert.strictEqual(manifest.headers.get('content-type'), 'application/manifest+json');
+    for (const icon of (await manifest.json()).icons) assert.strictEqual((await get('/' + icon.src)).status, 200, icon.src);
+    for (const f of ['/icons/icon-180.png', '/icons/app.ico']) assert.strictEqual((await get(f)).status, 200, f);
 
     const config = await get('/api/config');
     assert.strictEqual(config.body.update.version, require('./package.json').version);

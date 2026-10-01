@@ -54,8 +54,9 @@ The dashboard opens in your browser. For its own window and Dock icon: in Safari
 3. Open the new `attention-dashboard` folder (in your user folder) and **double-click
    `install.cmd`**. A window shows what it is doing and stays open at the end.
 
-The dashboard opens in your browser. For its own window: in Edge, open the **⋯** menu →
-**Apps → Install this site as an app**.
+When it's done, Attention Dashboard opens in its own window, like any other app, and there's
+an **Attention Dashboard** shortcut in the Start menu and on the desktop. Right-click it to pin
+it to the taskbar.
 
 > The Windows version is new and has not been tested much yet. If something goes wrong,
 > please send the error along with the file `dashboard.log` from the `attention-dashboard`
@@ -204,6 +205,7 @@ refuse to delete the folder while the database is in use). Then, in PowerShell:
 
 ```powershell
 Unregister-ScheduledTask -TaskName "Attention Dashboard" -Confirm:$false
+Remove-Item "$([Environment]::GetFolderPath('Programs'))\Attention Dashboard.lnk", "$([Environment]::GetFolderPath('Desktop'))\Attention Dashboard.lnk" -ErrorAction SilentlyContinue
 cd ~; Remove-Item -Recurse -Force attention-dashboard
 ```
 

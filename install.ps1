@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # Invoke-WebRequest's own progress bar is just noise here
 Set-Location $PSScriptRoot
 
-function Step($n, $text) { Write-Host -NoNewline "[$n/5] $text... " }
+function Step($n, $text) { Write-Host -NoNewline "[$n/6] $text... " }
 function Ok($text = 'done') { Write-Host $text -ForegroundColor Green }
 function Fail($text) { Write-Host 'failed' -ForegroundColor Red; Write-Host $text; exit 1 }
 
@@ -69,7 +69,36 @@ if (-not $up) {
 }
 Ok ' running'
 
+# Its own app, like Safari's Add to Dock on a Mac: Start menu and desktop shortcuts that open
+# Edge in app mode (own window, no address bar), with the dashboard's icon. Edge ships with
+# Windows 10 and 11; without it, the dashboard still works in any browser.
+Step 6 'Adding it to the Start menu and desktop'
+$edge = @(
+  (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe' -ErrorAction SilentlyContinue).'(default)',
+  "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+  "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
+) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+if ($edge) {
+  try {
+    $shell = New-Object -ComObject WScript.Shell
+    foreach ($dir in [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop')) {
+      $lnk = $shell.CreateShortcut((Join-Path $dir 'Attention Dashboard.lnk'))
+      $lnk.TargetPath = $edge
+      $lnk.Arguments = "--app=$url"
+      $lnk.IconLocation = (Join-Path $PSScriptRoot 'public\icons\app.ico')
+      $lnk.Description = 'Attention Dashboard'
+      $lnk.Save()
+    }
+    Ok
+  } catch { Write-Host 'skipped' -ForegroundColor Yellow; Write-Host "      $($_.Exception.Message)" }
+} else { Write-Host 'skipped (Edge not found)' -ForegroundColor Yellow }
+
 Write-Host ''
 Write-Host "All set. Attention Dashboard is at $url and starts by itself every time you log in." -ForegroundColor Green
-Write-Host 'Opening it in your browser now. For its own window: in Edge, ... menu > Apps > Install this site as an app.'
-Start-Process $url
+if ($edge) {
+  Write-Host 'Open it any time from the Start menu or the desktop shortcut "Attention Dashboard".'
+  Start-Process $edge "--app=$url"
+} else {
+  Write-Host 'Opening it in your browser now.'
+  Start-Process $url
+}

@@ -39,7 +39,9 @@ goto wait
 :open
 echo.
 echo Running at %URL%
-start "" "%URL%"
+rem The app window from the installer's shortcut, or a browser tab when there is none.
+set LNK=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Attention Dashboard.lnk
+if exist "%LNK%" (start "" "%LNK%") else (start "" "%URL%")
 exit /b 0
 
 :foreground

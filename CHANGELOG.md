@@ -3,6 +3,14 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.10.0 (1 October 2026)
+
+- **Its own app on Windows.** The installer adds **Attention Dashboard** to the Start menu and
+  the desktop. It opens in its own window with its own icon, without browser tabs or an address
+  bar, and you can pin it to the taskbar. Run `install.cmd` again to get the shortcuts.
+- The dashboard now describes itself as an app, so Edge and Chrome can install it with its
+  name and icon, and Safari's **Add to Dock** gets a sharp icon.
+
 ## 1.9.2 (1 October 2026)
 
 - Windows: the installer could report "the server did not start" while it was running fine.
