@@ -1,6 +1,6 @@
 {
   "name": "attention-dashboard",
-  "version": "1.9.2",
+  "version": "1.10.0",
   "private": true,
   "description": "A personal calendar/todo attention dashboard (standalone localhost port)",
   "scripts": {
