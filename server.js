@@ -301,7 +301,10 @@ async function accessTokenFor(email, force = false) {
   const refresh = loadTokens()[email]?.refresh_token;
   if (!refresh) throw new Error('account not connected');
 
+  // A time limit: when the network drops traffic to Google the request would otherwise hang
+  // forever, and every Google card on the page with it.
   const r = await fetch('https://oauth2.googleapis.com/token', {
+    signal: AbortSignal.timeout(15000),
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -310,6 +313,8 @@ async function accessTokenFor(email, force = false) {
       refresh_token: refresh,
       grant_type: 'refresh_token',
     }),
+  }).catch(err => {
+    throw new Error(`Couldn't reach Google: ${err.name === 'TimeoutError' ? 'no answer in 15 s' : err.cause?.code || err.message}`);
   });
   const d = await r.json();
   if (!d.access_token) throw new Error(d.error_description || d.error || 'refresh failed');

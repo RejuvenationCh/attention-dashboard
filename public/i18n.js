@@ -5,7 +5,9 @@
 // Language: Settings → Appearance → Language; "Automatic" follows the browser.
 (() => {
   const pref = (() => { try { return JSON.parse(localStorage.getItem('attention-appearance-v1'))?.lang || 'auto'; } catch { return 'auto'; } })();
-  const browserId = (navigator.languages || [navigator.language]).some(l => /^id\b|^in\b/i.test(l || ''));
+  // The browser's main language only: Indonesian further down the list (a second keyboard,
+  // say) used to switch the whole page.
+  const browserId = /^(id|in)\b/i.test((navigator.languages || [])[0] || navigator.language || '');
   const lang = pref === 'id' || (pref === 'auto' && browserId) ? 'id' : 'en';
   document.documentElement.lang = lang;
   window.i18n = { lang, dateLocale: lang === 'id' ? 'id-ID' : 'en-ID' };
@@ -44,6 +46,8 @@
     'Connect Google Calendar to search it here': 'Hubungkan Google Kalender untuk mencarinya di sini',
     'No calendar yet': 'Belum ada kalender', 'No account connected yet.': 'Belum ada akun terhubung.',
     'Signed out, so its calendars are not loading': 'Keluar, jadi kalendernya tidak dimuat',
+    "Can't reach Google right now": 'Google tidak bisa dihubungi saat ini', 'Try again': 'Coba lagi',
+    "Couldn't reach Google. Check your internet connection, then refresh.": 'Google tidak bisa dihubungi. Periksa koneksi internet, lalu muat ulang.',
     'Signed out. Reconnect your Google account in Accounts': 'Keluar. Hubungkan lagi akun Google di Akun',
     'Blocks your free time. Click to ignore': 'Menghalangi waktu luangmu. Klik untuk mengabaikan',
     'Ignored when working out free time': 'Diabaikan saat menghitung waktu luang', 'Rename': 'Ganti nama', 'Disconnect': 'Putuskan',
@@ -152,6 +156,7 @@
     [/^Added "(.+)" to your calendar$/, '"$1" ditambahkan ke kalendermu'],
     [/^Nothing matches “(.+)”\.$/, 'Tidak ada yang cocok dengan “$1”.'],
     [/^(\d+) of (\d+) calendars? failed to load$/, '$1 dari $2 kalender gagal dimuat'],
+    [/^Couldn't reach Google: (.+)$/, 'Google tidak bisa dihubungi: $1'],
     [/^Backup saved: (\d+) tasks?$/, 'Cadangan disimpan: $1 tugas'],
     [/^Could not (.+?): (.+)$/, (m, what, why) => `Tidak bisa ${({ save: 'menyimpan', install: 'memasang', restore: 'memulihkan',
       'check for updates': 'memeriksa pembaruan', 'make a backup': 'membuat cadangan', 'collect diagnostics': 'mengumpulkan diagnostik',

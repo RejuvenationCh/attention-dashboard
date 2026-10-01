@@ -119,22 +119,22 @@ async function restoreAccounts() {
   // and appending to the old list showed every account twice.
   accounts = [];
   failedAccounts = [];
-  for (const entry of list) {
+  // All accounts at once rather than one after another; the list keeps the server's order.
+  const loaded = await Promise.all(list.map(async entry => {
     // Moodle arrives with its calendars attached and nothing to sign in to.
-    if (entry.source === 'moodle') {
-      accounts.push({ email: entry.email, name: entry.name, source: 'moodle', calendars: entry.calendars || [] });
-      continue;
-    }
+    if (entry.source === 'moodle') return { ok: { email: entry.email, name: entry.name, source: 'moodle', calendars: entry.calendars || [] } };
     try {
       const { token, exp } = await fetchToken(entry.email);
       const { list: calendars } = await listCalendars(token);
-      accounts.push({ email: entry.email, token, exp, calendars });
+      return { ok: { email: entry.email, token, exp, calendars } };
     } catch (err) {
       // This used to be a bare `catch {}`: a signed-out account silently vanished
-      // from the dashboard and you only noticed by the events going missing.
-      failedAccounts.push({ email: entry.email, error: err.message });
+      // from the dashboard and you only noticed by the events going missing. An account
+      // Google could not be reached for is not signed out, and says so.
+      return { failed: { email: entry.email, error: err.message, offline: unreachable(err) } };
     }
-  }
+  }));
+  for (const r of loaded) r.ok ? accounts.push(r.ok) : failedAccounts.push(r.failed);
   renderAccounts();
   // Always via reload(): it owns the disconnected branch, and calling
   // showDisconnected() straight from here skipped the cards that branch fills.
@@ -153,8 +153,19 @@ async function removeAccount(email) {
   reload();
 }
 
+// Every request to Google goes through here, with a time limit. When the network drops traffic
+// to Google, a request without one never ends and the cards spin forever; this turns that into
+// a message. Errors from here (and the server's token refresh) start "Couldn't reach Google".
+const GOOGLE_TIMEOUT = 20000;
+const unreachable = err => String(err?.message || '').startsWith("Couldn't reach Google");
+function googleFetch(url, init = {}) {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(GOOGLE_TIMEOUT) }).catch(err => {
+    throw new Error(`Couldn't reach Google: ${err.name === 'TimeoutError' ? 'no answer in 20 s' : 'no connection'}`);
+  });
+}
+
 async function listCalendars(token) {
-  const res = await fetch(
+  const res = await googleFetch(
     'https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=reader&maxResults=50',
     { headers: { Authorization: 'Bearer ' + token } });
   if (!res.ok) {
@@ -176,7 +187,7 @@ async function listCalendars(token) {
 // (tokens die after ~1h and this dashboard stays open all day).
 async function gcal(pathAndQuery, init = {}, acct = googleAccounts()[0]) {
   if (!acct) throw new Error('No account connected');
-  const call = () => fetch('https://www.googleapis.com/calendar/v3' + pathAndQuery, {
+  const call = () => googleFetch('https://www.googleapis.com/calendar/v3' + pathAndQuery, {
     ...init,
     headers: { ...(init.headers || {}), Authorization: 'Bearer ' + acct.token },
   });
@@ -197,14 +208,16 @@ function showDisconnected() {
   ['event-list','week-list'].forEach(id =>
     document.getElementById(id).innerHTML = `<div class="empty">${
       failedAccounts.length
-        ? 'Signed out. Reconnect your Google account in Accounts'
+        ? failedAccounts.every(f => f.offline) ? "Couldn't reach Google. Check your internet connection, then refresh."
+          : 'Signed out. Reconnect your Google account in Accounts'
         : 'Connect Google Calendar to see your schedule here'}</div>`);
   // Search Calendar has its own list; left alone it spins forever with nothing to load.
   _upcoming = [];
   document.getElementById('upcoming-count').textContent = '–';
   document.getElementById('upcoming-cal-btn').hidden = true;
   document.getElementById('upcoming-list').innerHTML = `<div class="empty">${
-    failedAccounts.length ? 'Signed out. Reconnect your Google account in Accounts' : 'Connect Google Calendar to search it here'}</div>`;
+    failedAccounts.length ? (failedAccounts.every(f => f.offline) ? "Couldn't reach Google. Check your internet connection, then refresh."
+      : 'Signed out. Reconnect your Google account in Accounts') : 'Connect Google Calendar to search it here'}</div>`;
   document.getElementById('cd-days').textContent = '–';
   document.getElementById('cd-name').textContent = 'No calendar yet';
   document.getElementById('cd-sub').textContent = '–';
@@ -254,9 +267,10 @@ function renderAccounts() {
         <span class="acct-dot off"></span>
         <div class="acct-body">
           <div class="acct-email">${escape(f.email)}</div>
-          <div class="acct-meta">Signed out, so its calendars are not loading</div>
+          <div class="acct-meta">${f.offline ? "Can't reach Google right now" : 'Signed out, so its calendars are not loading'}</div>
         </div>
-        <button class="acct-reconnect" onclick="addAccount()">Reconnect</button>
+        ${f.offline ? '<button class="acct-reconnect" onclick="restoreAccounts()">Try again</button>'
+          : '<button class="acct-reconnect" onclick="addAccount()">Reconnect</button>'}
       </div>
     </div>`).join('')
   // Moodle alone still needs a way to add Google; the empty state above only

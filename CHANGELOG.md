@@ -3,6 +3,15 @@
 What changed in each version. The dashboard updates itself, so you get these automatically;
 **Settings** shows which version you have.
 
+## 1.11.1 (1 October 2026)
+
+- When Google can't be reached (a network problem), the dashboard now says so after 20 seconds
+  instead of loading forever. The account shows "Can't reach Google right now" with **Try
+  again**, rather than "Signed out".
+- Accounts load at the same time instead of one after another.
+- Language "Automatic" follows your browser's main language only. Having Indonesian as a second
+  language no longer switches the page to Indonesian.
+
 ## 1.11.0 (1 October 2026)
 
 - **A new Settings window.** Sections on the left (You, Tasks, Calendar, Appearance, Your data,
