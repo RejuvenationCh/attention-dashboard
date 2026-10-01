@@ -186,16 +186,26 @@ Press **?** anywhere for the keyboard shortcuts: **N** new task, **/** search ta
 - **Stop dashboard doesn't stay stopped (macOS).** Installs from before version 1.3.0 need the
   install step run once more; after that it stays stopped.
 
-## Uninstall
+## Uninstall or reinstall
 
-**macOS**, in Terminal (this also stops it):
+Deleting the `attention-dashboard` folder deletes your tasks too. To keep them, first use
+**Settings → Your data → Download** to save a backup.
+
+**macOS**, in Terminal (the first line also stops it):
 
 ```bash
 launchctl bootout gui/$UID/com.attention-dashboard
 rm ~/Library/LaunchAgents/com.attention-dashboard.plist
+rm -rf ~/attention-dashboard
 ```
 
-**Windows:** in the dashboard, click **Settings → Stop dashboard**. Then open **Task Scheduler**
-and delete the task **Attention Dashboard**.
+**Windows:** in the dashboard, click **Settings → Stop dashboard** first (otherwise Windows may
+refuse to delete the folder while the database is in use). Then, in PowerShell:
 
-Then delete the `attention-dashboard` folder.
+```powershell
+Unregister-ScheduledTask -TaskName "Attention Dashboard" -Confirm:$false
+cd ~; Remove-Item -Recurse -Force attention-dashboard
+```
+
+**To reinstall,** follow [Install](#install) again from the `git clone` step, then
+**Settings → Your data → Restore…** your backup if you made one.
